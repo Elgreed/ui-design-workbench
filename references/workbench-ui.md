@@ -65,7 +65,7 @@ Official pattern references:
 ## Interaction contract
 
 - `All screens`, `Prototype`, `Single screen`, and `Compare` are view modes and stay in one group. No other persistent control may also enter Compare.
-- `Interact`, `Inspect`, and `Comment` are canvas tools and stay in a separate group.
+- The bottom canvas palette keeps view modes plus only the pointer/Interact escape action. `Properties` and `Comments` in the rail activate Inspect and Comment respectively; the Problems visibility toggle lives inside the Problems panel, so these commands are not duplicated in the persistent bottom palette.
 - Prototype is the only mode in which declared navigation changes screens.
 - Selecting a node synchronizes canvas highlight, layer/screen context, and the Properties or Comments panel without losing canvas scroll.
 - Menus and popovers are mutually exclusive and close on action, outside click, `Escape`, or view change.

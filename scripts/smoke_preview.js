@@ -353,7 +353,10 @@ async function main() {
         const railCommandsWork = ['inspect', 'review', 'comments'].every(tab => Boolean(document.querySelector('.workbench-rail [data-inspector-tab="' + tab + '"]')))
           && document.querySelectorAll('.workbench-rail .rail-menu').length === 2
           && Boolean(document.querySelector('.workbench-rail .rail-menu.language-menu .locale-current'))
-          && Boolean(document.querySelector('.workbench-rail .rail-menu .export-feedback'));
+          && Boolean(document.querySelector('.workbench-rail .rail-menu .export-feedback'))
+          && document.querySelectorAll('.canvas-tools [data-interaction]').length === 1
+          && Boolean(document.querySelector('.canvas-tools [data-interaction="interact"]'))
+          && !document.querySelector('.canvas-tools [data-canvas-layer]');
         const fileRailMenu = document.querySelector('.workbench-rail .rail-menu:not(.language-menu)');
         const languageRailMenu = document.querySelector('.workbench-rail .rail-menu.language-menu');
         const fileRailSummaryRect = fileRailMenu?.querySelector('summary')?.getBoundingClientRect();
