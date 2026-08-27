@@ -44,7 +44,7 @@ Use `--capture-review-section summary|problems|changes` to capture each review w
 
 Repeat for every primary and compact viewport. The `--capture-*` options restore a canonical view, screen, panel, and inspector state after smoke interactions, so regression screenshots do not accidentally capture the test residue. At widths up to 980 px, an explicitly open right panel closes the left panel to preserve the production mutual-exclusion invariant. Compare a candidate only with a deliberately approved baseline captured at the same viewport and state:
 
-The smoke workflow must also validate the standalone Codex handoff descriptor without launching it: an absolute artifact path, a `codex://new` URL, the `$ui-design-workbench` prompt, immutable-baseline/source guards, selected finding IDs for proposal jobs, and visible copy/refresh recovery controls. It must not require a bridge server, localhost port, or background process.
+The smoke workflow must also validate the portable agent handoff without launching an agent: an absolute artifact path, provider-neutral prompt/job, immutable-baseline/source guards, selected finding IDs for proposal jobs, and visible copy/refresh recovery controls. For `--agent codex`, additionally validate the optional `codex://new` URL. No adapter may require a bridge server, localhost port, or background process.
 
 ```powershell
 python <skill-dir>/scripts/visual_regression.py --baseline <baseline.png> --candidate <candidate.png> --baseline-geometry <baseline-geometry.json> --candidate-geometry <candidate-geometry.json> --output <visual-regression.json> --diff-image <visual-diff.png> --strict

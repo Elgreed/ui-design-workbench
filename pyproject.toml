@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ui-design-workbench-cli"
+version = "0.1.0"
+description = "Repository UI indexing, graph, preview, and deterministic review CLI"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Elgreed" }]
+keywords = ["agent-skills", "ui", "ux", "design-review", "code-analysis"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Quality Assurance",
+]
+
+[project.scripts]
+uidw = "uidw:main"
+
+[project.urls]
+Homepage = "https://github.com/Elgreed/ui-design-workbench"
+Repository = "https://github.com/Elgreed/ui-design-workbench"
+
+[tool.setuptools]
+package-dir = { "" = "scripts" }
+py-modules = [
+  "uidw",
+  "scan_ui",
+  "quality_common",
+  "render_preview",
+  "coverage_report",
+  "validate_platform_profiles",
+]
+
+[tool.setuptools.data-files]
+"share/ui-design-workbench/references" = ["references/platform-profiles.json"]
+"share/ui-design-workbench/schemas" = ["schemas/*.json"]

@@ -34,7 +34,7 @@ Official pattern references:
 - Show only the active right-panel tab. Selecting an inspection or comment tool opens its matching tab.
 - Keep diagnostics collapsed until requested or until a run has non-pass results.
 - Put one compact `Запустить ревью` launcher at the top of the Review tab. It is the primary entry point for reviewing already assembled mockups; local diagnostic implementation details stay below it.
-- After the run, show the issue count and a secondary `Открыть AI-ревью в Codex` handoff. It opens a new Codex task with a prepared prompt and the review directory as its workspace; it does not submit the prompt. Keep a compact JSON-download action as the manual fallback, not a competing primary path.
+- After the run, show the issue count and a secondary `Подготовить AI-ревью` handoff. It copies or downloads a provider-neutral job; an optional adapter may open a prepared native agent task, but it never submits the prompt. Keep a compact JSON-download action as the portable fallback, not a competing primary path.
 - Keep finding observation and actions visible; place impact, recommendation, and evidence in an expandable detail region.
 - Use short empty states that name the next direct action. Do not add tutorial paragraphs to compensate for ambiguous controls.
 - Split the Review tab into `Сводка`, `Проблемы`, and `Изменения`. Summary owns scope, coverage, history, and diagnostics; Problems owns audit evidence and selection; Changes owns the correction queue, imported proposals, and design approval. Do not vertically stack all three workflows.
@@ -78,7 +78,7 @@ Before delivery:
 2. Inspect visual hierarchy, canvas area, panel competition, icon consistency, label baselines, spacing, clipping, selected states, empty states, and floating-control occlusion.
 3. Run the Diagnostics Runner and the review workflow smoke test.
 4. Click the one-button review launcher and confirm that it covers every screen/profile, converts every non-pass result into a focused finding set without duplicates, and enables a self-contained expert-review export only after completion.
-5. Verify the Codex handoff uses an absolute review-directory path, opens only a prefilled task, clearly asks the user to send it, requires no server or open port, and leaves source modification blocked. Verify `Скопировать запрос`, `Обновить макет`, and the JSON fallback independently.
+5. Verify the agent handoff uses an absolute review-directory path, prepares only a prompt/job, clearly asks the user to send it, requires no server or open port, and leaves source modification blocked. Verify `Скопировать запрос`, `Обновить макет`, and the JSON fallback independently; test native adapters separately.
 6. Verify Summary/Problems/Changes isolation, contextual primary-action progression, source/screen filters, bulk selection, named run history, expert-result import, revision/project rejection, and arbitrary version-to-version comparison.
 7. Verify compact-width panel mutual exclusion, every right-panel tab, every view/tool combination, panel resizing/collapse, menu dismissal, zoom, tree search, and version approval.
 8. Reject the shell if understanding the primary controls depends on permanent help copy.

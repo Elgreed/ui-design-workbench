@@ -4,12 +4,25 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 from pathlib import Path
 from typing import Any, Iterable
 
 
-SKILL_ROOT = Path(__file__).resolve().parent.parent
-PROFILE_CATALOG_PATH = SKILL_ROOT / "references" / "platform-profiles.json"
+def resolve_profile_catalog() -> Path:
+    candidates = []
+    if os.environ.get("UIDW_HOME"):
+        candidates.append(Path(os.environ["UIDW_HOME"]).expanduser() / "references" / "platform-profiles.json")
+    candidates.extend([
+        Path(__file__).resolve().parent.parent / "references" / "platform-profiles.json",
+        Path(__file__).resolve().parent / "share" / "ui-design-workbench" / "references" / "platform-profiles.json",
+        Path(sys.prefix) / "share" / "ui-design-workbench" / "references" / "platform-profiles.json",
+    ])
+    return next((item for item in candidates if item.is_file()), candidates[0])
+
+
+PROFILE_CATALOG_PATH = resolve_profile_catalog()
 
 
 def read_json(path: str | Path) -> dict[str, Any]:

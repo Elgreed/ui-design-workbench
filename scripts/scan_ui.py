@@ -21,7 +21,9 @@ EXCLUDED_DIRS = {
     ".git", ".gradle", ".idea", ".next", ".nuxt", ".dart_tool",
     "build", "dist", "out", "target", "node_modules", "Pods", "DerivedData",
     "vendor", "coverage", ".codegraph", ".worktrees", ".claude", ".lavish", ".codex",
+    ".agents", ".cursor", ".gemini", ".opencode", ".ui-design-workbench",
 }
+SCANNER_VERSION = 3
 SOURCE_EXTENSIONS = {
     ".kt", ".kts", ".xml", ".swift", ".storyboard", ".xib", ".dart",
     ".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".html",
@@ -387,7 +389,46 @@ def iter_files(root: Path) -> Iterable[Path]:
             yield current_path / filename
 
 
-def scan(root: Path) -> dict[str, Any]:
+def analyze_file(root: Path, path: Path) -> dict[str, Any] | None:
+    """Analyze one candidate file so callers can cache results by content hash."""
+    suffix = path.suffix.lower()
+    source = relative(path, root)
+    if suffix in ASSET_EXTENSIONS:
+        return {"path": source, "kind": "asset", "asset": {"path": source, "type": suffix.lstrip(".")}}
+    if suffix not in SOURCE_EXTENSIONS:
+        return None
+    text = read_text(path)
+    if text is None:
+        return {"path": source, "kind": "skipped", "reason": "large-or-unreadable"}
+    platforms = detect_platforms(path, text)
+    if not platforms:
+        return {"path": source, "kind": "source", "platforms": [], "uiFile": None}
+    role = classify_role(path, text)
+    symbols = extract_symbols(text, platforms)
+    file_routes = extract_routes(text, source)
+    file_navigation_targets = extract_navigation_targets(text, source) if suffix in {".html", ".htm"} else []
+    return {
+        "path": source,
+        "kind": "source",
+        "platforms": platforms,
+        "uiFile": {
+            "path": source,
+            "platforms": platforms,
+            "role": role,
+            "symbols": symbols,
+            "routes": file_routes,
+            "navigationTargets": file_navigation_targets,
+        },
+        "screens": screen_candidates(source, path, text, platforms, symbols, role),
+        "routes": file_routes,
+        "navigationTargets": file_navigation_targets,
+        "components": component_candidates(source, platforms, symbols, role),
+        "tokenFile": source if role == "theme" else None,
+    }
+
+
+def assemble_scan(root: Path, file_records: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    """Assemble a repository inventory from cached per-file analyses."""
     ui_files: list[dict[str, Any]] = []
     screens: list[dict[str, Any]] = []
     routes: list[dict[str, Any]] = []
@@ -398,46 +439,36 @@ def scan(root: Path) -> dict[str, Any]:
     detected: list[str] = []
     skipped_large = 0
     policy_file = ""
-    for candidate in (root / ".codex" / "ui-policy.json", root / "ui-policy.json"):
+    for candidate in (
+        root / ".agents" / "ui-policy.json",
+        root / ".codex" / "ui-policy.json",
+        root / "ui-policy.json",
+    ):
         if candidate.is_file():
             policy_file = relative(candidate, root)
             break
 
-    for path in iter_files(root):
-        suffix = path.suffix.lower()
-        source = relative(path, root)
-        if suffix in ASSET_EXTENSIONS:
-            assets.append({"path": source, "type": suffix.lstrip(".")})
+    for record in file_records:
+        if not isinstance(record, dict):
             continue
-        if suffix not in SOURCE_EXTENSIONS:
+        if record.get("kind") == "asset" and isinstance(record.get("asset"), dict):
+            assets.append(record["asset"])
             continue
-        text = read_text(path)
-        if text is None:
+        if record.get("kind") == "skipped":
             skipped_large += 1
             continue
-        platforms = detect_platforms(path, text)
+        platforms = record.get("platforms", [])
         if not platforms:
             continue
         detected.extend(platforms)
-        role = classify_role(path, text)
-        symbols = extract_symbols(text, platforms)
-        file_routes = extract_routes(text, source)
-        file_navigation_targets = extract_navigation_targets(text, source) if suffix in {".html", ".htm"} else []
-        routes.extend(file_routes)
-        navigation_targets.extend(file_navigation_targets)
-        file_record = {
-            "path": source,
-            "platforms": platforms,
-            "role": role,
-            "symbols": symbols,
-            "routes": file_routes,
-            "navigationTargets": file_navigation_targets,
-        }
-        ui_files.append(file_record)
-        screens.extend(screen_candidates(source, path, text, platforms, symbols, role))
-        components.extend(component_candidates(source, platforms, symbols, role))
-        if role == "theme":
-            token_files.append(source)
+        if isinstance(record.get("uiFile"), dict):
+            ui_files.append(record["uiFile"])
+        routes.extend(record.get("routes", []))
+        navigation_targets.extend(record.get("navigationTargets", []))
+        screens.extend(record.get("screens", []))
+        components.extend(record.get("components", []))
+        if record.get("tokenFile"):
+            token_files.append(str(record["tokenFile"]))
 
     role_order = {"navigation": 0, "theme": 1, "screen": 2, "component": 3, "ui-source": 4}
     ui_files.sort(key=lambda item: (role_order.get(item["role"], 9), item["path"]))
@@ -479,6 +510,15 @@ def scan(root: Path) -> dict[str, Any]:
         "uiFiles": ui_files[:2000],
         "warnings": warnings,
     }
+
+
+def scan(root: Path) -> dict[str, Any]:
+    records: list[dict[str, Any]] = []
+    for path in iter_files(root):
+        record = analyze_file(root, path)
+        if record is not None:
+            records.append(record)
+    return assemble_scan(root, records)
 
 
 def slug(value: str, fallback: str) -> str:
@@ -554,7 +594,7 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
         }
         nodes[title_id] = {"type": "text", "text": candidate.get("name", "Screen"), "style": {}, "source": source, "confidence": candidate.get("confidence", "approximate")}
         nodes[source_id] = {"type": "text", "text": f"{candidate.get('file', '')}:{candidate.get('line', 1)}", "style": {}, "source": source, "confidence": "exact"}
-        nodes[inventory_id] = {"type": "custom", "text": "Codex should inspect this source file and replace this inventory placeholder with translated UI nodes.", "component": "UntranslatedSource", "source": source, "confidence": "unsupported"}
+        nodes[inventory_id] = {"type": "custom", "text": "The AI agent should inspect this source file and replace this inventory placeholder with translated UI nodes.", "component": "UntranslatedSource", "source": source, "confidence": "unsupported"}
 
     detected_platforms = scan_result.get("detectedPlatforms", [])
     tv = any(platform.startswith("android-tv") for platform in detected_platforms)

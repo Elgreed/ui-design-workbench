@@ -76,7 +76,7 @@ The Review panel uses three isolated workspaces: `Сводка`, `Проблем
 
 Never claim `all states` from screen count alone. Enumerate every declared `node.states` variant for each included screen and deterministic viewport profile, execute it, and report tested versus expected combinations. Keep unavailable loading/error/offline/localization/RTL or assistive-technology conditions as explicit gaps. `Current screen` scope may reduce runtime; `All screens` remains the default final-review scope.
 
-After a completed local run, enable `Открыть AI-ревью в Codex`. The generated HTML embeds its absolute review-directory path and constructs the official `codex://new?prompt=...&path=...` deep link. The new Codex task receives a prepared prompt plus that directory as its local workspace; the user still reviews and sends the prompt. Keep `ui-expert-review-request.json` as a portable manual fallback containing the complete IR, screen IDs, active version, runtime report, existing findings and decisions.
+After a completed local run, enable `Подготовить AI-ревью`. The generated HTML embeds its absolute review-directory path and creates a portable prompt/job for any filesystem-capable agent. A user still reviews and sends the prompt. With the optional `--agent codex` renderer adapter, the same job can also be prepared through the official `codex://new?prompt=...&path=...` deep link. Keep `ui-expert-review-request.json` as a portable fallback containing the complete IR, screen IDs, active version, runtime report, existing findings and decisions.
 
 The workbench accepts either a complete returned UI IR or `ui-design-workbench-expert-review-result` with `requestRevision`, `project`, `summary`, `findings`, `versions`, and `resolvedFindingIds`. Continue accepting the legacy `ui-code-preview-expert-review-result` so existing review jobs remain importable. Reject an explicit mismatched request revision or project. Merge nodes, stable finding IDs, and sparse proposal versions without replacing baseline nodes; append new versions to the selector, record an import-history entry, and open Changes. Import never authorizes source edits.
 
@@ -98,7 +98,7 @@ The built-in scenarios check zoom-label/reset synchronization, stable overview-c
 
 When `review.audit` exists, its findings appear above user annotations. Every failed `interactionCheck` or `layoutCheck`, and every `uxAssessment` with `status: finding`, links to one or more concrete cards through `findingIds`. Audit rows show the linked count and provide `Показать проблемы` plus `Все в исправление`; they are evidence summaries, not separate invisible work items.
 
-Each finding can focus its affected screen/node and, when linked to `proposalVersionId`, open the corresponding correction in `Before / After`. The reviewer chooses `В исправление`, `Не исправлять`, or `Позже`. The correction queue reports how many selected findings already have a proposal and how many need a new one. `Создать вариант макета` opens a prepared Codex task scoped to the review directory. The task includes selected finding IDs, active and baseline versions, annotations, review scope, and `sourceChangeAllowed: false`; it may create up to two alternatives only when a real UX tradeoff exists. `Скопировать задание` and `ui-fix-request.json` remain manual fallbacks.
+Each finding can focus its affected screen/node and, when linked to `proposalVersionId`, open the corresponding correction in `Before / After`. The reviewer chooses `В исправление`, `Не исправлять`, or `Позже`. The correction queue reports how many selected findings already have a proposal and how many need a new one. `Создать вариант макета` prepares an agent task scoped to the review directory. The task includes selected finding IDs, active and baseline versions, annotations, review scope, and `sourceChangeAllowed: false`; it may create up to two alternatives only when a real UX tradeoff exists. `Скопировать задание` and `ui-fix-request.json` remain portable fallbacks.
 
 The queue communicates five phases: `Проблемы → Выбрано → Макет → Согласовано → Проект`. Preparing a proposal never changes application source. Only after a proposal version is explicitly accepted does `Подготовить внедрение в проект` become available; it exports `ui-source-change-request.json` as a planning handoff and still requires a separate approval of files and diff before source edits.
 
@@ -111,7 +111,7 @@ Annotations use statuses `new`, `in-progress`, `proposed`, `accepted`, `rejected
 Process comments incrementally:
 
 1. Export or copy `ui-review-feedback.json` from the preview.
-2. Merge it into a new IR file. The merge preserves the exported runtime report as `review.diagnosticsReport`, appends validated `runtimeFindings` to `review.audit.findings`, and records the feedback revision, so Codex can reconcile failed checks with findings and proposals:
+2. Merge it into a new IR file. The merge preserves the exported runtime report as `review.diagnosticsReport`, appends validated `runtimeFindings` to `review.audit.findings`, and records the feedback revision, so an agent can reconcile failed checks with findings and proposals:
 
 ```powershell
 python <skill-dir>/scripts/merge_review_state.py <review-dir>/ui-ir.json <review-dir>/ui-review-feedback.json --output <review-dir>/ui-ir-reviewed.json
@@ -126,8 +126,8 @@ Do not edit application source during this loop. After explicit source-edit appr
 
 ## Offline boundary
 
-The preview remains a standalone local HTML file and makes no network requests. It may navigate to the official `codex://new` application deep link, which opens a new local task with a prefilled prompt and absolute workspace path. This requires no bridge server, localhost port, CLI process, or background service. Navigation is not submission: the workbench must say that the task was opened/prepared and ask the user to send the prompt; it must never claim that AI review or remediation started.
+The preview remains a standalone local HTML file and makes no network requests. It can copy or download a portable task and may optionally navigate to a provider's official local deep link. This requires no bridge server, localhost port, CLI process, or background service. Preparing or navigating is not submission: the workbench must ask the user to send the prompt and never claim that AI review or remediation started.
 
-The Codex task is restricted to the generated review directory. It may update `ui-ir.json`, regenerate `ui-preview.html`, and write validation artifacts, but it must not modify the source project or immutable baseline. When complete, the user returns to the preview and chooses `Обновить макет`. Export/copy of `ui-fix-request.json` and `ui-expert-review-request.json` remains the recovery path when the deep link is unavailable.
+The agent task is restricted to the generated review directory. It may update `ui-ir.json`, regenerate `ui-preview.html`, and write validation artifacts, but it must not modify the source project or immutable baseline. When complete, the user returns to the preview and chooses `Обновить макет`. Export/copy of `ui-agent-job.json`, `ui-fix-request.json`, and `ui-expert-review-request.json` remains the recovery path when a native adapter is unavailable.
 
 `merge_review_state.py` accepts either ordinary `ui-review-feedback.json` or the wrapped `ui-fix-request.json`. For a fix request it also preserves the selected IDs and requested action as `review.correctionRequest` before a new proposal is authored.

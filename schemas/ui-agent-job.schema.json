@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Elgreed/ui-design-workbench/schemas/ui-agent-job.schema.json",
+  "title": "UI Design Workbench portable agent job",
+  "type": "object",
+  "required": ["type", "version", "provider", "kind", "artifactDir", "allowedWrites", "sourceChangeAllowed"],
+  "properties": {
+    "type": { "const": "ui-design-workbench-agent-job" },
+    "version": { "const": 1 },
+    "provider": { "type": "string" },
+    "kind": { "enum": ["expert", "proposal", "source-plan"] },
+    "artifactDir": { "type": "string" },
+    "scope": { "enum": ["all", "current"] },
+    "screenIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "acceptedFindingIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "allowedWrites": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "sourceChangeAllowed": { "const": false }
+  },
+  "additionalProperties": true
+}

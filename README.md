@@ -1,201 +1,176 @@
 # UI Design Workbench
 
-**English** | [Русский](README.ru.md)
+[Русская версия](README.ru.md)
 
-UI Design Workbench is a Codex skill for reconstructing, generating, redesigning, and reviewing application interfaces directly from source code.
+UI Design Workbench is a CLI-first UI analysis and design tool with a thin portable Agent Skill adapter. It reconstructs, generates, redesigns, and deeply reviews product interfaces from repository source code, producing an offline interactive HTML workbench without running the target app, emulator, simulator, build, or development server.
 
-It creates a standalone interactive HTML workbench without launching the target application, emulator, simulator, or development server. The workbench preserves source-backed UI details, exposes the screen hierarchy and navigation, supports element-level comments and Before/After proposals, and keeps application source unchanged until implementation is approved separately.
+The repository UI remains the evidence source. The generated `ui-ir.json` is the editable design model; `ui-preview.html` is its standalone projection. Application source stays read-only until the user separately approves a concrete implementation diff.
 
-## Why use it
+## What it provides
 
-Most design-to-code tools start from an existing design file. UI Design Workbench also supports the opposite direction: it discovers the UI already implemented in a repository and turns it into a reviewable design workspace.
+- Repository-aware discovery of screens, routes, logical views, navigation targets, components, tokens, fonts, and assets.
+- Incremental, content-fingerprinted project context that avoids repeated repository-wide scans and reduces model context usage.
+- Complete hierarchical screen tree with active-screen and navigation-target preview states.
+- All screens, Prototype, Single screen, and Before/After split or overlay views.
+- Stable shared-canvas zoom, resizable/collapsible panels, inspect mode, anchored comments, and feedback export.
+- Evidence-based UI/UX review with deterministic interaction/geometry diagnostics and separate expert UX assessment.
+- Sparse correction proposals that preserve an immutable Before baseline.
+- Platform profiles for Android, Android TV, iOS/iPadOS, macOS, Windows, Web, React Native, and Flutter.
+- Provider-neutral AI jobs plus an optional Codex deep-link adapter. No bridge server or open port.
 
-Use it to:
+## Supported agents
 
-- inspect an existing UI without running the application;
-- build an interactive map of discovered screens and transitions;
-- review UI and UX against project and platform standards;
-- annotate specific elements and collect structured feedback;
-- generate new screens or alternative UI solutions;
-- redesign selected screens while preserving unrelated behavior;
-- compare the immutable current design with one or more proposals;
-- approve the design before allowing source-code implementation.
+The skill follows the open Agent Skills layout and uses only files, Python, and optional local browser diagnostics. It can be discovered by Codex, Claude Code, Cursor, Gemini CLI, GitHub Copilot CLI, OpenCode, and other Agent Skills-compatible tools.
 
-## Supported platforms
-
-- Android and Jetpack Compose;
-- Android TV, Compose for TV, Views, and Leanback;
-- iOS, iPadOS, UIKit, and SwiftUI;
-- macOS, SwiftUI, AppKit, and Mac Catalyst;
-- Windows, WinUI 3, WPF, and XAML;
-- Web applications;
-- React Native;
-- Flutter.
-
-The workbench applies the matching platform baseline: Material for Android, TV-specific Material and D-pad focus patterns for Android TV, Apple Human Interface Guidelines for iOS and macOS, Fluent and Windows interaction guidance for Windows, and semantic HTML, WCAG, and ARIA APG patterns for the Web. Project components and design tokens take priority when source evidence is available.
-
-## Main capabilities
-
-- **Repository UI discovery** — screens, routes, navigation targets, components, tokens, typography, and assets.
-- **Screen hierarchy** — every translated screen appears once in a searchable, collapsible tree.
-- **Multiple canvas modes** — All screens, Prototype, Single screen, and Before/After comparison.
-- **Interactive prototype** — reconstructed navigation and local component-state actions.
-- **Inspection and comments** — feedback linked to stable screen, node, version, and source references.
-- **Deep UI/UX review** — hierarchy, spacing, typography, states, discoverability, density, accessibility, iconography, adaptive behavior, and cross-control interactions.
-- **Deterministic diagnostics** — zoom synchronization, overlap, clipping, geometry, menus, navigation, target sizes, contrast, accessible names, and declared states.
-- **Correction workflow** — accepted findings become sparse proposal versions without replacing the baseline.
-- **Codex handoff** — a prepared local Codex task opens through the official `codex://new` deep link; no bridge server or open port is required.
-- **Source protection** — design approval never implicitly authorizes edits to the application repository.
-
-## Installation
-
-Clone the repository into the Codex skills directory.
-
-### Windows PowerShell
+Clone the repository, then install links from that clone:
 
 ```powershell
-git clone https://github.com/Elgreed/ui-design-workbench.git "$env:USERPROFILE\.codex\skills\ui-design-workbench"
+git clone https://github.com/Elgreed/ui-design-workbench.git
+cd ui-design-workbench
+./install.ps1 -Agent all
 ```
 
-### macOS or Linux
-
-```bash
-git clone https://github.com/Elgreed/ui-design-workbench.git ~/.codex/skills/ui-design-workbench
+```sh
+git clone https://github.com/Elgreed/ui-design-workbench.git
+cd ui-design-workbench
+./install.sh all
 ```
 
-Restart Codex or open a new task after installation so the skill is rediscovered.
+You can replace `all` with `codex`, `claude`, `cursor`, `gemini`, `copilot`, `opencode`, or `agents`. The installers create directory links and refuse to overwrite an existing installation. Restart the selected agent or open a new session after installation.
+
+Install the standalone CLI from the same clone (prefer `pipx` for isolation):
+
+```text
+pipx install .
+uidw --version
+```
+
+Without `pipx`, `python -m pip install --user .` is supported. The bundled `python scripts/uidw.py ...` entry point remains available without installation.
+
+The preferred portable location is `~/.agents/skills/ui-design-workbench`; native locations are listed in [Agent integrations](references/agent-integrations.md).
 
 ## Quick start
 
-Open the target repository in Codex and invoke the skill explicitly:
+Ask your agent to use `ui-design-workbench` and specify a mode and scope, for example:
 
 ```text
-$ui-design-workbench reconstruct the UI from this repository and create an interactive HTML workbench
-```
-
-Other useful requests:
-
-```text
-$ui-design-workbench review the assembled UI and show corrected Before/After proposals
+Use ui-design-workbench to reconstruct every admin screen from this repository.
+Do not run the app or edit source. Build a navigable HTML prototype and a complete screen tree.
 ```
 
 ```text
-$ui-design-workbench redesign the project settings screen while preserving the existing design system
+Use ui-design-workbench to run a deep UI/UX review of the assembled screens for Windows.
+Test interactions, transient states, zoom, typography, spacing, accessibility, and platform fit.
+Show evidence-backed Before/After corrections without changing application source.
 ```
 
 ```text
-$ui-design-workbench generate a new onboarding flow that follows the target platform standards
+Use ui-design-workbench to redesign this Android TV browse screen using the existing design system,
+TV Material, D-pad navigation, restored focus, ten-foot readability, and overscan-safe content.
 ```
 
-The skill may also be selected automatically for matching UI reconstruction, design, redesign, or review requests.
+## Efficient project context
 
-## Working modes
+Agents should start with:
 
-### Reconstruct
+```text
+uidw --repo <repo> context --json
+```
 
-Recreates the interface already present in source code. It prioritizes fidelity and provenance and does not introduce creative redesign decisions.
+The first call builds the UI inventory. Later calls compare candidate fingerprints and analyze only added or content-modified files. The returned compact context tells the agent which source files matter. A bounded screen context is available with:
 
-### Generate
+```text
+uidw --repo <repo> context --screen <screen-id> --json
+```
 
-Creates new interfaces from a brief, project tokens and components, and the standards of the selected platform.
+Useful commands:
 
-### Redesign
+```text
+uidw --repo <repo> init
+uidw --repo <repo> status --json
+uidw --repo <repo> sync
+uidw --repo <repo> sync --force
+uidw --repo <repo> map --output <artifact-dir>/ui-graph.json
+uidw --repo <repo> doctor --json
+```
 
-Improves named UX problems while preserving unrelated behavior and the immutable current-design baseline.
+By default, derived state is stored in the OS user cache, never in the installed skill or source repository. `init --project-cache` is an explicit CI/portable-mode opt-in and creates an ignored `.ui-design-workbench` directory. See [Cache protocol](references/cache-protocol.md).
 
-### Review
+## Review artifact workflow
 
-Builds the current UI as the baseline, performs deterministic and expert analysis, records evidence-backed findings, and creates corrected proposals for review.
+1. The agent reads compact cached context and only the necessary project UI sources.
+2. It creates a separate review directory with `ui-ir.json`.
+3. It reconstructs the immutable baseline or records a generated/redesigned version with explicit evidence.
+4. It renders `ui-preview.html` and runs strict coverage/platform checks.
+5. For review work, it runs interaction, state, typography, geometry, accessibility, and UX passes across declared screens and profiles.
+6. The user selects findings, compares correction proposals, comments, and accepts or rejects a design version.
+7. Only after acceptance can the agent prepare a separate source-change plan. Editing source still requires explicit approval of intended files and diff.
 
-## Typical workflow
+Render a completed IR:
 
-1. Codex scans the repository and discovers UI entry points, screens, routes, navigation, components, tokens, and assets.
-2. It builds `ui-ir.json`, a portable intermediate representation of the interface and review state.
-3. It renders a standalone `ui-preview.html` workbench outside the source repository by default.
-4. Coverage, platform-profile, interaction, geometry, and accessibility checks are executed against the generated files.
-5. The reviewer navigates screens, inspects elements, adds comments, and selects findings for correction.
-6. Codex creates one or more sparse proposal versions and renders Before/After comparisons.
-7. The reviewer accepts, rejects, or requests another design iteration.
-8. Only after design approval may Codex prepare a separate source implementation plan and proposed diff.
+```text
+uidw render <review-dir>/ui-ir.json --output <review-dir>/ui-preview.html
+```
 
-## Using the generated workbench
+The default handoff copies or downloads a provider-neutral job. For Codex only, opt into its local task adapter:
 
-- **All screens** displays every translated screen on one shared canvas.
-- **Prototype** enables reconstructed screen transitions and browser history.
-- **Single screen** freezes navigation for focused inspection.
-- **Compare** displays any two retained versions side by side or as an overlay.
-- **Interact** operates controls and prototype transitions.
-- **Inspect** shows node, component, source, semantics, platform standard, and confidence data.
-- **Comment** attaches feedback to the selected node and review version.
-- **Review** runs diagnostics, presents findings, manages the correction queue, and tracks approval.
+```text
+uidw render <review-dir>/ui-ir.json --output <review-dir>/ui-preview.html --agent codex
+```
 
-Screen navigation lives in the left panel. Properties, review findings, and comments live in separate tabs in the right panel. Both panels are collapsible and resizable. Canvas zoom is independent from screen dimensions and is controlled from the bottom-right zoom cluster or the mouse wheel over the canvas.
+## Deep review contract
 
-## Review and correction flow
+A complete review is not a screenshot critique. It must separately cover:
 
-1. Open the **Review** tab and choose the review scope.
-2. Run **Review mockups** to execute deterministic checks across the selected screens and viewport profiles.
-3. Inspect **Problems** and mark findings as Fix, Ignore, or Later.
-4. Open **Changes** and create a proposal for the selected findings.
-5. A prepared Codex task opens with the review artifact directory as its workspace. Review and send the prefilled prompt.
-6. When Codex finishes rebuilding the artifacts, return to the workbench and refresh it.
-7. Compare the proposal with the baseline and approve it or request another iteration.
+- information architecture, discoverability, action placement, icon meaning/style, density, feedback, progressive disclosure, adaptive behavior, and platform fit;
+- single, reverse, repeated, chained, boundary, and intermediate transitions, including cross-control state synchronization;
+- menus, popovers, dialogs, panels, navigation, history, focus, persistence, scroll bounds, and shared-canvas zoom;
+- typography roles, baselines, four-side padding, icon-label gaps, containment, wrapping, clipping, overflow, and optical alignment;
+- primary and compact viewports, zoom boundaries, long localization, text scaling, themes, input methods, and relevant product states;
+- semantic/accessibility behavior and platform-specific conventions.
 
-The deep link only prepares a task. It does not submit the prompt or claim that AI work has started. Copyable prompts and JSON job files remain available as manual fallbacks.
+Every problem must have stable evidence, user impact, recommendation, severity, confidence, a source target, a standards/project basis, and a linked proposal or explicit reason why no visual proposal is responsible.
 
-## Generated artifacts
+## Validation
 
-A complete review bundle can contain:
+The production gate includes:
 
-- `ui-scan.json` — discovered UI inventory;
-- `ui-ir.json` — screens, nodes, components, actions, versions, findings, and provenance;
-- `ui-preview.html` — standalone interactive workbench;
-- `platform-profile-report.json` — platform-standard validation;
-- `ui-coverage.json` and `ui-coverage.md` — translation and evidence coverage;
-- `ui-interaction-matrix.json` — generated state and cross-control scenarios;
-- `ui-diagnostics.json` — executed workbench diagnostics;
-- screenshots and geometry snapshots for reproducible visual review;
-- review feedback, correction jobs, and source-planning handoff JSON files.
+```text
+python <skill-dir>/scripts/validate_platform_profiles.py <review-dir>/ui-ir.json --output <review-dir>/platform-profile-report.json --strict
+python <skill-dir>/scripts/coverage_report.py <review-dir>/ui-ir.json --output <review-dir>/ui-coverage.json --strict
+python <skill-dir>/scripts/generate_interaction_matrix.py <review-dir>/ui-ir.json --output <review-dir>/ui-interaction-matrix.json
+node <skill-dir>/scripts/smoke_preview.js <review-dir>/ui-preview.html --output <review-dir>/ui-diagnostics.json
+```
 
-Generated review files are kept outside the application repository unless the user explicitly requests otherwise.
+Visual regression is allowed only against an explicitly approved baseline captured at the same viewport/state. A successful command is not automatically a passing report; every non-pass result must be fixed or retained as a named blocker/gap. See [Delivery validation](references/validation.md) and [Quality automation](references/quality-automation.md).
 
-## Safety and fidelity boundaries
+## Cache versus durable project knowledge
 
-- The target application is not run unless the user separately requests it.
-- Reconstruction may only claim fidelity supported by source evidence.
-- Browser-default controls must not silently replace project UI components.
-- Missing assets or unsupported constructs remain explicit instead of being invented.
-- The baseline is immutable; proposals are stored as separate sparse versions.
-- Approving a design does not approve application-source changes.
-- A separate confirmation is required before modifying the listed source files and diff.
-
-## Requirements
-
-- Codex with local skill support;
-- Python 3.10 or newer;
-- Node.js for headless smoke checks;
-- Chrome, Edge, or Chromium for browser diagnostics, screenshots, and geometry capture.
-
-No target-app runtime, emulator, simulator, bridge server, localhost service, or network development server is required to build the workbench.
+Technical fingerprints and per-file records are disposable user-cache data. A human-readable screen map, accepted UX decisions, or redesign history may be exported to project documentation or an Obsidian vault, but Obsidian is optional and is not part of the cache protocol.
 
 ## Repository structure
 
 ```text
-ui-design-workbench/
-├── SKILL.md              Skill entry point and operating contract
-├── agents/openai.yaml    Codex UI metadata and default invocation
-├── references/           Platform rules, schemas, fidelity and review guidance
-└── scripts/              Scanner, renderer, validators and diagnostics
+SKILL.md                       Agent-facing workflow
+agents/openai.yaml             Optional Codex metadata
+install.ps1 / install.sh       Multi-agent installers
+references/                    Platform, review, IR, cache, and validation contracts
+scripts/uidw.py                Incremental project-context CLI
+scripts/scan_ui.py             Source discovery and per-file analysis
+scripts/render_preview.py      Standalone HTML renderer
+scripts/smoke_preview.js       Headless interaction/geometry diagnostics
+scripts/*                      Coverage, profiles, scenarios, merge, regression, tests
 ```
 
-See [SKILL.md](SKILL.md) for the complete agent workflow and invariants. Detailed schemas and standards are in [`references/`](references/); deterministic tooling is in [`scripts/`](scripts/).
+## Requirements
 
-## Validation
+- Python 3.10 or newer.
+- An agent with local filesystem and shell access.
+- Node.js plus Chrome, Edge, or Chromium only for headless diagnostics.
+- Pillow only for pixel regression.
 
-Validate the installed skill:
+No target runtime, emulator, bridge server, localhost service, or network request is needed for the generated preview.
 
-```powershell
-python "$env:USERPROFILE\.codex\skills\.system\skill-creator\scripts\quick_validate.py" "$env:USERPROFILE\.codex\skills\ui-design-workbench"
-```
+## Version
 
-The final UI bundle should also pass the platform-profile and coverage gates and complete the headless workbench smoke test described in [`references/quality-automation.md`](references/quality-automation.md).
+The repository currently has the `v0.1` initial public release tag. Ongoing `main` development may contain newer unreleased capabilities.

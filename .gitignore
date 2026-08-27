@@ -1,7 +1,7 @@
 __pycache__/
 *.py[cod]
-*.log
-*.tmp
-.DS_Store
-Thumbs.db
-node_modules/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.ui-design-workbench/

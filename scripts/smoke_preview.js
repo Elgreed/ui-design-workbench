@@ -191,20 +191,20 @@ async function main() {
         const selected = Number(document.querySelector('.fix-queue-count')?.textContent || 0);
         const request = selected && typeof fixRequestPayload === 'function' ? fixRequestPayload() : null;
         const expertRequest = typeof expertReviewRequestPayload === 'function' ? expertReviewRequestPayload() : null;
-        const expertHandoff = window.__uiPreviewDiagnostics?.codexHandoff?.('expert');
-        const proposalHandoff = window.__uiPreviewDiagnostics?.codexHandoff?.('proposal');
-        state.codexHandoff = {
+        const expertHandoff = window.__uiPreviewDiagnostics?.agentHandoff?.('expert');
+        const proposalHandoff = window.__uiPreviewDiagnostics?.agentHandoff?.('proposal');
+        state.agentHandoff = {
           kind: 'proposal', status: 'prepared', createdAt: new Date().toISOString(),
           acceptedFindingIds: proposalHandoff?.context?.acceptedFindingIds || [],
           screenIds: proposalHandoff?.context?.screenIds || [], artifactDir: proposalHandoff?.path || ''
         };
-        renderCodexHandoff();
-        const handoffPanelWorks = document.querySelector('.codex-handoff-panel')?.hidden === false
-          && Boolean(document.querySelector('.copy-codex-task'))
+        renderAgentHandoff();
+        const handoffPanelWorks = document.querySelector('.agent-handoff-panel')?.hidden === false
+          && Boolean(document.querySelector('.copy-agent-task'))
           && Boolean(document.querySelector('.refresh-preview'))
-          && document.querySelector('.codex-handoff-meta')?.textContent?.includes('отправьте подготовленный запрос');
-        state.codexHandoff = null;
-        renderCodexHandoff();
+          && document.querySelector('.agent-handoff-meta')?.textContent?.includes('выбранном AI-агенте');
+        state.agentHandoff = null;
+        renderAgentHandoff();
         const runtimeActionable = Boolean(request?.findings?.some(item => item.runtimeDiagnosticId));
         const contextProposalAction = document.querySelector('.review-next-action')?.dataset.action === 'proposal';
         const smokeFinding = {
@@ -297,16 +297,17 @@ async function main() {
           actionableGroups,
           autoReviewFindings,
           autoReviewButton: Boolean(document.querySelector('.run-review')),
-          codexReviewButtonEnabled: document.querySelector('.open-codex-review')?.disabled === false,
+          agentReviewButtonEnabled: document.querySelector('.open-agent-review')?.disabled === false,
           expertReviewButtonEnabled: document.querySelector('.export-review-request')?.disabled === false,
           expertRequestValid: expertRequest?.type === 'ui-design-workbench-expert-review-request'
             && expertRequest?.runtimeDiagnostics?.status === 'complete'
             && expertRequest?.screenIds?.length === screens.length
             && expertRequest?.uiIr?.screens?.length === screens.length,
           expertHandoffValid: expertHandoff?.supported === true
-            && expertHandoff?.url?.startsWith('codex://new?')
+            && expertHandoff?.provider === 'generic'
+            && expertHandoff?.url === null
             && expertHandoff?.path === previewContext.artifactDir
-            && expertHandoff?.prompt?.includes('$ui-design-workbench')
+            && expertHandoff?.prompt?.includes('ui-design-workbench')
             && expertHandoff?.prompt?.includes('Не изменяй исходный проект'),
           proposalHandoffValid: proposalHandoff?.supported === true
             && proposalHandoff?.context?.acceptedFindingIds?.length === selected
@@ -343,7 +344,7 @@ async function main() {
     if (workflow.totalBefore > 0 && (
       !workflow.auditLinks || !workflow.linkedVisible || workflow.totalAfter !== workflow.totalBefore + workflow.actionableGroups + 1
       || workflow.autoReviewFindings !== workflow.actionableGroups + 1 || !workflow.autoReviewButton
-      || !workflow.codexReviewButtonEnabled || !workflow.expertReviewButtonEnabled || !workflow.expertRequestValid
+      || !workflow.agentReviewButtonEnabled || !workflow.expertReviewButtonEnabled || !workflow.expertRequestValid
       || !workflow.expertHandoffValid || !workflow.proposalHandoffValid
       || !workflow.handoffPanelWorks
       || !workflow.contextProposalAction || !workflow.importWorks || !workflow.compareVariantsWork || !workflow.reviewSectionsWork
@@ -385,7 +386,7 @@ async function main() {
          renderCoverage();
          renderReviewHistory();
          renderImportStatus();
-         renderCodexHandoff();
+         renderAgentHandoff();
          renderView();
         document.querySelector('[data-inspector-pane="review"]')?.scrollTo({ top: 0, behavior: 'instant' });
         const toast = document.querySelector('.workbench-toast');

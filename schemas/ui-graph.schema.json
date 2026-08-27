@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Elgreed/ui-design-workbench/schemas/ui-graph.schema.json",
+  "title": "UI Design Workbench source graph",
+  "type": "object",
+  "required": ["version", "graphType", "repoRoot", "summary", "screenTree", "nodes", "edges"],
+  "properties": {
+    "version": { "const": 1 },
+    "graphType": { "const": "ui-source-map" },
+    "repoRoot": { "type": "string" },
+    "project": { "type": "object" },
+    "detectedPlatforms": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "summary": {
+      "type": "object",
+      "required": ["nodes", "edges", "screens", "routes"],
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "screenTree": { "type": "array" },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind"],
+        "properties": {
+          "id": { "type": "string" },
+          "kind": { "enum": ["source", "screen", "route", "component", "token-file", "navigation-target"] }
+        },
+        "additionalProperties": true
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "target", "kind"],
+        "properties": {
+          "source": { "type": "string" },
+          "target": { "type": "string" },
+          "kind": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}
