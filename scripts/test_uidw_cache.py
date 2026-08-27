@@ -40,7 +40,9 @@ class IncrementalCacheTests(unittest.TestCase):
         report = uidw.initialize(self.repo)
         paths = uidw.state_paths(self.repo)
         self.assertEqual(report["status"], "synced")
+        self.assertFalse(report["uiMode"]["enabled"])
         self.assertFalse((self.repo / uidw.STATE_DIR_NAME).exists())
+        self.assertTrue(paths["config"].is_file())
         self.assertTrue(paths["cache"].is_file())
         self.assertTrue(paths["graph"].is_file())
         graph = uidw.read_json(paths["graph"], {})
@@ -48,6 +50,31 @@ class IncrementalCacheTests(unittest.TestCase):
         self.assertGreaterEqual(graph["summary"]["screens"], 2)
         self.assertTrue(any(node["kind"] == "screen" for node in graph["nodes"]))
         self.assertEqual(uidw.inspect_cache(self.repo)[0]["status"], "clean")
+
+    def test_ui_mode_is_opt_in_and_does_not_rescan_clean_sources(self) -> None:
+        uidw.initialize(self.repo)
+        with mock.patch.object(uidw, "analyze_file", wraps=uidw.analyze_file) as analyze:
+            enabled = uidw.configure_ui_mode(self.repo, True)
+        self.assertEqual(enabled["status"], "enabled")
+        self.assertTrue(enabled["uiMode"]["enabled"])
+        analyze.assert_not_called()
+        context = uidw.read_json(uidw.state_paths(self.repo)["context"], {})
+        self.assertTrue(context["uiMode"]["enabled"])
+        self.assertEqual(context["uiMode"]["scope"], "ui-related tasks only")
+
+        disabled = uidw.configure_ui_mode(self.repo, False)
+        self.assertEqual(disabled["status"], "disabled")
+        context = uidw.read_json(uidw.state_paths(self.repo)["context"], {})
+        self.assertEqual(context["uiMode"], {"enabled": False, "default": "off"})
+
+    def test_init_prompt_defaults_off_and_accepts_explicit_yes(self) -> None:
+        fake_stdin = mock.Mock()
+        fake_stdin.isatty.return_value = True
+        with mock.patch.object(uidw.sys, "stdin", fake_stdin), mock.patch("builtins.input", return_value=""):
+            self.assertFalse(uidw.resolve_init_ui_mode(None, False))
+        with mock.patch.object(uidw.sys, "stdin", fake_stdin), mock.patch("builtins.input", return_value="yes"):
+            self.assertTrue(uidw.resolve_init_ui_mode(None, False))
+        self.assertFalse(uidw.resolve_init_ui_mode(None, True))
 
     def test_clean_sync_reuses_every_per_file_record(self) -> None:
         uidw.initialize(self.repo)

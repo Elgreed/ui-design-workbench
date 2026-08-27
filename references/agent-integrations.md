@@ -25,4 +25,6 @@ An agent needs local file read/write access and Python 3.10+. Node.js plus Chrom
 
 The portable handoff is `ui-agent-job.json`. It contains artifact directory, review scope, selected stable finding IDs, screen IDs, active/baseline versions, annotations, allowed output patterns, and `sourceChangeAllowed: false`. Agents must modify only the declared review artifacts and return validation results.
 
+For ordinary source tasks, `uidw init` can opt a project into lightweight UI guidance. The mode is off by default and appears in `ui-context.json` as `uiMode`. A compatible agent loads only the relevant platform guidance, preserves the project's components and tokens, and stays within the requested implementation scope. This is independent of the review handoff and must not create a workbench or claim a full audit unless requested.
+
 Codex may opt into `render_preview.py --agent codex`, which enables the official local `codex://new` preparation path. Other agents use copied prompts or the JSON job. Provider-specific adapters are optional presentation conveniences and must not change the IR, cache, review semantics, permissions, or approval boundary.

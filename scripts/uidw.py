@@ -36,6 +36,7 @@ CACHE_VERSION = 2
 CLI_VERSION = "0.1.0"
 STATE_DIR_NAME = ".ui-design-workbench"
 CONFIG_NAME = "config.json"
+UI_MODE_KEY = "uiMode"
 CACHE_NAME = "cache-state.json"
 SCAN_NAME = "ui-scan.json"
 IR_NAME = "ui-ir.json"
@@ -65,12 +66,13 @@ def sha256_file(path: Path) -> str:
 
 
 def state_paths(root: Path) -> dict[str, Path]:
-    config_path = root / STATE_DIR_NAME / CONFIG_NAME
-    config = read_json(config_path, default_config())
-    if not isinstance(config, dict):
-        config = default_config()
-    if config.get("cacheMode") == "project":
+    project_config_path = root / STATE_DIR_NAME / CONFIG_NAME
+    project_config = read_json(project_config_path, {})
+    if not isinstance(project_config, dict):
+        project_config = {}
+    if project_config.get("cacheMode") == "project":
         directory = root / STATE_DIR_NAME
+        config_path = project_config_path
     else:
         override = os.environ.get("UIDW_CACHE_HOME")
         if override:
@@ -87,6 +89,7 @@ def state_paths(root: Path) -> dict[str, Path]:
         digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
         label = re.sub(r"[^a-z0-9]+", "-", root.name.lower()).strip("-") or "project"
         directory = cache_root / "projects" / f"{label}-{digest}"
+        config_path = project_config_path if project_config_path.is_file() else directory / CONFIG_NAME
     return {
         "dir": directory,
         "config": config_path,
@@ -109,12 +112,39 @@ def default_config() -> dict[str, Any]:
         "maxContextScreens": 100,
         "maxContextComponents": 200,
         "handoffProvider": "generic",
+        UI_MODE_KEY: {"enabled": False},
     }
 
 
 def config_hash(config: dict[str, Any]) -> str:
-    payload = json.dumps(config, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    scan_config = {key: value for key, value in config.items() if key != UI_MODE_KEY}
+    payload = json.dumps(scan_config, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def normalized_config(value: Any) -> dict[str, Any]:
+    config = default_config()
+    if isinstance(value, dict):
+        config.update(value)
+    mode = config.get(UI_MODE_KEY)
+    config[UI_MODE_KEY] = {"enabled": bool(mode.get("enabled", False))} if isinstance(mode, dict) else {"enabled": False}
+    return config
+
+
+def ui_mode_context(config: dict[str, Any], detected_platforms: list[str] | None = None) -> dict[str, Any]:
+    enabled = bool(config.get(UI_MODE_KEY, {}).get("enabled", False))
+    result: dict[str, Any] = {"enabled": enabled, "default": "off"}
+    if enabled:
+        result.update({
+            "scope": "ui-related tasks only",
+            "detectedPlatforms": detected_platforms or [],
+            "instruction": (
+                "For UI-related implementation tasks, preserve the project design system and apply the matching "
+                "platform conventions, accessibility, states, input methods, and adaptive behavior. Read only the "
+                "relevant platform guidance. Do not start a full review, redesign, or HTML workbench unless requested."
+            ),
+        })
+    return result
 
 
 def candidate_files(root: Path) -> list[Path]:
@@ -344,15 +374,14 @@ def compact_context(
         "tokenFiles": inventory.get("tokenFiles", [])[:100],
         "components": inventory.get("components", [])[:max_components],
         "warnings": inventory.get("warnings", []),
+        UI_MODE_KEY: ui_mode_context(config, inventory.get("detectedPlatforms", [])),
         "instructions": "Read prioritySourceFiles only when cacheStatus is stale or the requested screen is not fully represented in ui-ir.json.",
     }
 
 
 def inspect_cache(root: Path, verify_content: bool = False) -> tuple[dict[str, Any], dict[str, Any], dict[str, Path], dict[str, Any]]:
     paths = state_paths(root)
-    config = read_json(paths["config"], default_config())
-    if not isinstance(config, dict):
-        config = default_config()
+    config = normalized_config(read_json(paths["config"], {}))
     cache = read_json(paths["cache"], {})
     if not isinstance(cache, dict):
         cache = {}
@@ -383,6 +412,7 @@ def inspect_cache(root: Path, verify_content: bool = False) -> tuple[dict[str, A
         "scanFile": str(paths["scan"]),
         "irFile": str(paths["ir"]),
         "graphFile": str(paths["graph"]),
+        UI_MODE_KEY: ui_mode_context(config),
     }
     return result, current_manifest, paths, config
 
@@ -445,20 +475,46 @@ def sync_project(root: Path, force: bool = False, verify_content: bool = False) 
     return report
 
 
-def initialize(root: Path, force: bool = False, project_cache: bool = False) -> dict[str, Any]:
+def initialize(root: Path, force: bool = False, project_cache: bool = False, ui_mode: bool = False) -> dict[str, Any]:
     if project_cache:
         config_path = root / STATE_DIR_NAME / CONFIG_NAME
-        config = read_json(config_path, default_config())
-        if not isinstance(config, dict):
-            config = default_config()
+        config = normalized_config(read_json(config_path, {}))
         config["cacheMode"] = "project"
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-        write_json(config_path, config)
+    else:
+        initial_paths = state_paths(root)
+        config_path = initial_paths["config"]
+        config = normalized_config(read_json(config_path, {}))
+    config[UI_MODE_KEY] = {"enabled": bool(ui_mode)}
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    write_json(config_path, config)
     paths = state_paths(root)
     paths["dir"].mkdir(parents=True, exist_ok=True)
     if project_cache and not paths["gitignore"].exists():
         paths["gitignore"].write_text(STATE_GITIGNORE, encoding="utf-8")
-    return sync_project(root, force=force)
+    result = sync_project(root, force=force)
+    return {**result, UI_MODE_KEY: ui_mode_context(config, read_json(paths["scan"], {}).get("detectedPlatforms", []))}
+
+
+def configure_ui_mode(root: Path, enabled: bool | None = None) -> dict[str, Any]:
+    paths = state_paths(root)
+    config = normalized_config(read_json(paths["config"], {}))
+    if enabled is not None:
+        config[UI_MODE_KEY] = {"enabled": enabled}
+        paths["config"].parent.mkdir(parents=True, exist_ok=True)
+        write_json(paths["config"], config)
+        sync_project(root)
+        paths = state_paths(root)
+    inventory = read_json(paths["scan"], {})
+    detected = inventory.get("detectedPlatforms", []) if isinstance(inventory, dict) else []
+    mode = ui_mode_context(config, detected)
+    return {
+        "version": 1,
+        "status": "enabled" if mode["enabled"] else "disabled",
+        "repoRoot": str(root),
+        UI_MODE_KEY: mode,
+        "configFile": str(paths["config"]),
+        "contextFile": str(paths["context"]),
+    }
 
 
 def chrome_path() -> str | None:
@@ -478,7 +534,7 @@ def chrome_path() -> str | None:
 
 
 def doctor(root: Path) -> dict[str, Any]:
-    status, _, paths, _ = inspect_cache(root)
+    status, _, paths, config = inspect_cache(root)
     return {
         "version": 1,
         "repoRoot": str(root),
@@ -488,6 +544,7 @@ def doctor(root: Path) -> dict[str, Any]:
         "cache": status,
         "stateDir": str(paths["dir"]),
         "cliVersion": CLI_VERSION,
+        UI_MODE_KEY: ui_mode_context(config),
     }
 
 
@@ -537,6 +594,7 @@ def write_screen_context(paths: dict[str, Path], screen_query: str) -> Path:
         "design": ir.get("design", {}),
         "tokens": ir.get("tokens", {}),
         "warnings": base.get("warnings", []),
+        UI_MODE_KEY: base.get(UI_MODE_KEY, {"enabled": False, "default": "off"}),
         "uiGraphFile": str(paths["graph"]),
     }
     slug = re.sub(r"[^a-z0-9]+", "-", str(screen.get("id", "screen")).lower()).strip("-") or "screen"
@@ -551,7 +609,28 @@ def print_result(value: dict[str, Any], as_json: bool) -> None:
         return
     changed = len(value.get("changedUiFiles", []))
     impacted = len(value.get("impactedScreenIds", []))
-    print(f"{value.get('status', 'ok')} | changed={changed} | impacted={impacted}")
+    mode = value.get(UI_MODE_KEY)
+    mode_text = f" | ui-mode={'on' if mode.get('enabled') else 'off'}" if isinstance(mode, dict) else ""
+    print(f"{value.get('status', 'ok')} | changed={changed} | impacted={impacted}{mode_text}")
+
+
+def resolve_init_ui_mode(explicit: bool | None, as_json: bool) -> bool:
+    if explicit is not None:
+        return explicit
+    if as_json or not sys.stdin.isatty():
+        return False
+    print(
+        "Optional UI guidance mode applies project and platform conventions during ordinary UI implementation tasks.\n"
+        "It helps agents reuse existing components, respect Android/Android TV, Apple, Windows, and Web patterns,\n"
+        "and check accessibility and UI states without automatically starting a full review or redesign.\n"
+        "The mode is disabled by default and can be changed later with `uidw ui-mode --enable|--disable`.",
+        file=sys.stderr,
+    )
+    try:
+        answer = input("Enable UI guidance mode for this project? [y/N]: ").strip().lower()
+    except EOFError:
+        return False
+    return answer in {"y", "yes"}
 
 
 def render_artifact(ir_path: Path, output: Path, allow_draft: bool, agent: str) -> dict[str, Any]:
@@ -603,6 +682,9 @@ def parse_args() -> argparse.Namespace:
     init_parser = subparsers.add_parser("init", help="Create project UI state and perform the initial scan")
     init_parser.add_argument("--force", action="store_true", help="Recreate config and scan even when the cache is clean")
     init_parser.add_argument("--project-cache", action="store_true", help="Store ignored derived state inside the repository instead of the OS cache")
+    init_mode = init_parser.add_mutually_exclusive_group()
+    init_mode.add_argument("--ui-mode", dest="ui_mode", action="store_true", default=None, help="Enable platform guidance for ordinary UI tasks without prompting")
+    init_mode.add_argument("--no-ui-mode", dest="ui_mode", action="store_false", default=None, help="Keep platform guidance disabled without prompting")
     status_parser = subparsers.add_parser("status", help="Check whether the cached UI index is current")
     status_parser.add_argument("--verify-content", action="store_true", help="Hash every candidate file instead of trusting unchanged metadata")
     sync_parser = subparsers.add_parser("sync", help="Refresh the UI index only when relevant files changed")
@@ -621,6 +703,10 @@ def parse_args() -> argparse.Namespace:
     validate_parser = subparsers.add_parser("validate", help="Run deterministic platform and coverage gates")
     validate_parser.add_argument("ir", type=Path, help="Path to ui-ir.json")
     validate_parser.add_argument("--output-dir", type=Path, required=True, help="Directory for validation reports")
+    mode_parser = subparsers.add_parser("ui-mode", help="Show or change platform guidance for ordinary UI tasks")
+    mode_group = mode_parser.add_mutually_exclusive_group()
+    mode_group.add_argument("--enable", action="store_true", help="Enable UI guidance without rescanning unchanged UI source")
+    mode_group.add_argument("--disable", action="store_true", help="Disable UI guidance without rescanning unchanged UI source")
     subparsers.add_parser("doctor", help="Check local runtime and cache capabilities")
     return parser.parse_args()
 
@@ -632,7 +718,7 @@ def main() -> int:
         print(f"Repository directory does not exist: {root}", file=sys.stderr)
         return 2
     if args.command == "init":
-        result = initialize(root, args.force, args.project_cache)
+        result = initialize(root, args.force, args.project_cache, resolve_init_ui_mode(args.ui_mode, args.json))
     elif args.command == "status":
         result, _, _, _ = inspect_cache(root, args.verify_content)
     elif args.command == "sync":
@@ -673,6 +759,8 @@ def main() -> int:
         except ValueError as exc:
             print(str(exc), file=sys.stderr)
             return 3
+    elif args.command == "ui-mode":
+        result = configure_ui_mode(root, True if args.enable else False if args.disable else None)
     else:
         result = doctor(root)
     print_result(result, args.json)

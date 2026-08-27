@@ -1,13 +1,13 @@
 ---
 name: ui-design-workbench
-description: Reconstruct repository UI, perform evidence-based UI/UX audits with corrected Before/After proposals, generate new interfaces, or redesign existing screens as standards-aware interactive HTML previews without running the app or changing source files. Use for UI review and design work across Android, Android TV, iOS, iPadOS, macOS, Windows, Web, React Native, and Flutter; do not use when the user wants to execute or test the real application.
+description: Reconstruct, review, generate, or redesign repository UI as standards-aware interactive HTML previews; when a project's optional UI guidance mode is enabled, also guide ordinary UI implementation tasks with the matching Android, Android TV, Apple, Windows, or Web conventions. Do not use the workbench workflow when the user only wants to execute the real application.
 metadata:
   compatibility: "Requires Python 3.10 or newer. Node.js and Chromium are optional for headless diagnostics."
 ---
 
 # UI Design Workbench
 
-Build a reviewable HTML UI workbench from repository evidence. Treat application source as read-only until the user separately approves a source-code patch.
+Build a reviewable HTML UI workbench from repository evidence. Workbench design approval never authorizes application-source changes. In optional UI guidance mode, ordinary source edits remain limited to the user's implementation request and normal repository permissions.
 
 ## Start with cached project context
 
@@ -21,6 +21,8 @@ If `uidw` is not on `PATH`, use `python <skill-dir>/scripts/uidw.py ...` as the 
 
 This lazily initializes or synchronizes a per-project UI index and returns the compact context path. Read that context first. Read only its `prioritySourceFiles`, the requested screen context, and directly referenced components unless the cache reports a gap. Do not rescan unchanged files manually.
 
+Inspect `uiMode.enabled` in that context. When it is false, use this skill only for explicit reconstruct, generate, redesign, or review work. When it is true, use the lightweight guidance path in [references/ui-guidance-mode.md](references/ui-guidance-mode.md) for ordinary UI-related implementation tasks; do not build a preview or run a full audit unless requested.
+
 Use `init` for an explicit first scan, `status` to inspect freshness, `sync` after known UI changes, and `context --screen <id-or-name>` for bounded screen work. The default derived state belongs in the operating-system user cache; use `init --project-cache` only when the user explicitly needs ignored project-local state for CI or a portable environment. See [references/cache-protocol.md](references/cache-protocol.md).
 
 ## Choose the mode
@@ -31,9 +33,11 @@ Set one explicit mode from [references/design-modes.md](references/design-modes.
 - `generate`: create new UI from a brief, project design system, and target-platform standards.
 - `redesign`: improve named UX problems while preserving unrelated behavior and provenance.
 
-For review, audit, critique, or simplification requests, follow [references/ui-reviewer.md](references/ui-reviewer.md). Reconstruct an immutable baseline first; put corrections only in proposal versions. For `generate`, `redesign`, and review, read the relevant target sections of [references/platform-standards.md](references/platform-standards.md). Never apply redesign rules while reconstructing the baseline.
+For review, audit, critique, or simplification requests, follow [references/ui-reviewer.md](references/ui-reviewer.md). Reconstruct an immutable baseline first; put corrections only in proposal versions. For `generate`, `redesign`, review, and enabled UI guidance, read only the relevant target sections of [references/platform-standards.md](references/platform-standards.md). Never apply redesign rules while reconstructing the baseline. Ordinary guidance tasks do not set `design.mode` or create IR unless the user also requests a workbench operation.
 
-## Workflow
+## Workbench workflow
+
+Use this workflow for reconstruct, generate, redesign, and review. Guidance mode follows its shorter reference instead.
 
 1. Read repository instructions. If `.agents/ui-policy.json`, `.codex/ui-policy.json`, or root `ui-policy.json` exists, apply the first one in that order using [references/ui-policy-schema.md](references/ui-policy-schema.md). Use a repository index such as CodeGraph when available before broad text search.
 2. Declare mode, target platforms, review scope, primary user task, evidence sources, and preserved invariants. For reviews, declare covered screens, states, profiles, and input methods before assigning severity.

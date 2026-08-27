@@ -69,6 +69,22 @@ Use ui-design-workbench to redesign this Android TV browse screen using the exis
 TV Material, D-pad navigation, restored focus, ten-foot readability, and overscan-safe content.
 ```
 
+## Optional UI guidance mode
+
+`uidw init` explains and offers a lightweight UI guidance mode. The default answer is **No**, and non-interactive/JSON initialization also keeps it off unless explicitly enabled:
+
+```text
+uidw --repo <repo> init --ui-mode
+uidw --repo <repo> init --no-ui-mode
+uidw --repo <repo> ui-mode
+uidw --repo <repo> ui-mode --enable
+uidw --repo <repo> ui-mode --disable
+```
+
+When enabled, the compact project context tells compatible agents to use existing project components and the detected Android, Android TV, iOS/iPadOS, macOS, Windows, or Web conventions during ordinary UI implementation tasks. It checks only relevant platform, accessibility, state, input, and adaptive-layout concerns. It does **not** automatically start an audit, redesign, HTML preview, emulator, or application run.
+
+The setting is stored per project in the same user cache as the UI index by default. Switching it refreshes only compact context and does not rescan unchanged UI source. Use `init --project-cache` only when the project intentionally needs portable ignored configuration.
+
 ## Efficient project context
 
 Agents should start with:
@@ -92,6 +108,7 @@ uidw --repo <repo> sync
 uidw --repo <repo> sync --force
 uidw --repo <repo> map --output <artifact-dir>/ui-graph.json
 uidw --repo <repo> doctor --json
+uidw --repo <repo> ui-mode
 ```
 
 By default, derived state is stored in the OS user cache, never in the installed skill or source repository. `init --project-cache` is an explicit CI/portable-mode opt-in and creates an ignored `.ui-design-workbench` directory. See [Cache protocol](references/cache-protocol.md).
