@@ -27,8 +27,8 @@ function parseArgs(argv) {
     else if (!result.input) result.input = value;
     else throw new Error(`Unexpected argument: ${value}`);
   }
-  if (!result.input) throw new Error('Usage: smoke_preview.js <ui-preview.html> [--output diagnostics.json] [--screenshot preview.png] [--geometry-output geometry.json] [--capture-view overview|prototype|single|compare] [--capture-screen ID] [--capture-left-panel open|closed] [--capture-right-panel open|closed] [--capture-inspector-tab inspect|review|comments] [--capture-review-section summary|problems|changes] [--viewport-width 1440] [--viewport-height 960] [--fail-on-findings]');
-  if (result.captureView && !['overview', 'prototype', 'single', 'compare'].includes(result.captureView)) throw new Error('--capture-view must be overview, prototype, single, or compare');
+  if (!result.input) throw new Error('Usage: smoke_preview.js <ui-preview.html> [--output diagnostics.json] [--screenshot preview.png] [--geometry-output geometry.json] [--capture-view overview|prototype|single|states|compare] [--capture-screen ID] [--capture-left-panel open|closed] [--capture-right-panel open|closed] [--capture-inspector-tab inspect|review|comments] [--capture-review-section summary|problems|changes] [--viewport-width 1440] [--viewport-height 960] [--fail-on-findings]');
+  if (result.captureView && !['overview', 'prototype', 'single', 'states', 'compare'].includes(result.captureView)) throw new Error('--capture-view must be overview, prototype, single, states, or compare');
   if (result.captureLeftPanel && !['open', 'closed'].includes(result.captureLeftPanel)) throw new Error('--capture-left-panel must be open or closed');
   if (result.captureRightPanel && !['open', 'closed'].includes(result.captureRightPanel)) throw new Error('--capture-right-panel must be open or closed');
   if (result.captureInspectorTab && !['inspect', 'review', 'comments'].includes(result.captureInspectorTab)) throw new Error('--capture-inspector-tab must be inspect, review, or comments');
@@ -212,7 +212,7 @@ async function main() {
         state.agentHandoff = null;
         renderAgentHandoff();
         const runtimeActionable = Boolean(request?.findings?.some(item => item.runtimeDiagnosticId));
-        const contextProposalAction = document.querySelector('.review-next-action')?.dataset.action === 'proposal';
+        const contextProposalAction = ['proposal', 'compare-selected', 'approve', 'source'].includes(document.querySelector('.review-next-action')?.dataset.action);
         const smokeFinding = {
           id: 'smoke-imported-finding', title: 'Smoke imported finding', category: 'smoke', severity: 'low', confidence: 'high',
           screenId: screens[0].id, observation: 'Imported during smoke.', impact: 'None.', recommendation: 'None.',
@@ -285,6 +285,53 @@ async function main() {
           && findingsToggle?.getAttribute('aria-pressed') === 'true';
         state.activeVersion = 'smoke-imported-proposal';
         versionSelect.value = state.activeVersion;
+        const navigationSource = screens.find(screen => nodeIdsForScreen(screen).some(nodeId => nodes[nodeId]?.action?.type === 'navigate' && nodes[nodeId]?.action?.target !== screen.id));
+        let prototypeNavigationWorks = true;
+        let prototypeTreePreservesMode = true;
+        let prototypeForcesInteraction = true;
+        if (navigationSource) {
+          const navigationNodeId = nodeIdsForScreen(navigationSource).find(nodeId => nodes[nodeId]?.action?.type === 'navigate' && nodes[nodeId]?.action?.target !== navigationSource.id);
+          const navigationTarget = nodes[navigationNodeId]?.action?.target;
+          state.interaction = 'inspect';
+          setScreen(navigationSource.id, 'single');
+          setView('prototype');
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          prototypeForcesInteraction = state.interaction === 'interact';
+          document.querySelector('.stage [data-node-id="' + CSS.escape(navigationNodeId) + '"]')?.click();
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          prototypeNavigationWorks = state.view === 'prototype' && state.screen === navigationTarget;
+          const treeTarget = screens.find(screen => screen.id !== state.screen)?.id;
+          if (treeTarget) {
+            document.querySelector('.screen-link[data-screen="' + CSS.escape(treeTarget) + '"]')?.click();
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            prototypeTreePreservesMode = state.view === 'prototype' && state.screen === treeTarget;
+          }
+        }
+
+        const scenarioScreen = screens[0];
+        const scenarioNodeId = scenarioScreen ? nodeIdsForScreen(scenarioScreen).find(nodeId => nodes[nodeId]?.type === 'text') : null;
+        let screenScenarioControlsWork = true;
+        let stateGalleryWorks = true;
+        if (scenarioScreen && scenarioNodeId) {
+          const originalScenarios = scenarioScreen.scenarios;
+          scenarioScreen.scenarios = [...(Array.isArray(originalScenarios) ? originalScenarios : []), { id: 'smoke-fixture', label: 'Smoke fixture', nodeOverrides: { [scenarioNodeId]: { text: 'Scenario fixture visible' } } }];
+          setScreen(scenarioScreen.id, 'single');
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          const scenarioButton = document.querySelector('[data-screen-scenario="smoke-fixture"]');
+          scenarioButton?.click();
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          screenScenarioControlsWork = Boolean(scenarioButton)
+            && state.screenScenarioIds[scenarioScreen.id] === 'smoke-fixture'
+            && document.querySelector('.stage [data-node-id="' + CSS.escape(scenarioNodeId) + '"]')?.textContent === 'Scenario fixture visible';
+          setView('states');
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          stateGalleryWorks = state.view === 'states'
+            && document.querySelectorAll('.state-gallery .state-panel').length === screenScenarios(scenarioScreen).length
+            && document.querySelectorAll('.state-gallery .device').length === screenScenarios(scenarioScreen).length;
+          if (originalScenarios === undefined) delete scenarioScreen.scenarios; else scenarioScreen.scenarios = originalScenarios;
+          delete state.screenScenarioIds[scenarioScreen.id];
+        }
+
         setScreen(screens[0].id, 'single');
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const resolvedMarkerHidden = !document.querySelector('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]');
@@ -398,7 +445,11 @@ async function main() {
         approveActiveVersion();
         const sourceAfterApproval = document.querySelector('.review-next-action')?.dataset.action === 'source';
         const sourceRequest = typeof sourceRequestPayload === 'function' ? sourceRequestPayload() : null;
+        const implementationHandoff = window.__uiPreviewDiagnostics?.agentHandoff?.('implement');
+        const directFixEntryPoint = Boolean(document.querySelector('.fix-all-source'));
         const revisionVisible = Boolean(document.querySelector('.revision-badge')?.textContent?.trim());
+        const declaredScenarioCases = screens.flatMap(screen => screenScenarios(screen).slice(1).map(scenario => [screen.id, scenario.id]));
+        const screenScenarioDiagnosticsWork = declaredScenarioCases.every(([screenId, scenarioId]) => (state.diagnostics?.checks || []).some(check => check.scenarioId === 'state-matrix' && check.screenId === screenId && check.metrics?.screenScenarioId === scenarioId));
 
         setScreen(screens[0].id, 'single');
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -430,7 +481,9 @@ async function main() {
         stage.scrollLeft = requestedScroll;
         renderView();
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        const scrollPreserved = Math.abs(document.querySelector('.stage').scrollLeft - requestedScroll) <= 1;
+        const renderedStage = document.querySelector('.stage');
+        const expectedScroll = Math.min(requestedScroll, Math.max(0, renderedStage.scrollWidth - renderedStage.clientWidth));
+        const scrollPreserved = Math.abs(renderedStage.scrollLeft - expectedScroll) <= 1;
 
         setInspectorTab('inspect');
         const inspectTabWorks = document.querySelector('[data-inspector-pane="inspect"]')?.hidden === false
@@ -478,6 +531,8 @@ async function main() {
           expertRequestValid: expertRequest?.type === 'ui-design-workbench-expert-review-request'
             && expertRequest?.runtimeDiagnostics?.status === 'complete'
             && expertRequest?.screenIds?.length === screens.length
+            && expertRequest?.requiredChatReport?.includes('plain numbered list')
+            && expertRequest?.requiredChatReport?.includes('Do not add a duplicate plain-text report to the HTML')
             && expertRequest?.uiIr?.screens?.length === screens.length,
           expertHandoffValid: expertHandoff?.supported === true
             && expertHandoff?.provider === 'generic'
@@ -488,13 +543,25 @@ async function main() {
           proposalHandoffValid: proposalHandoff?.supported === true
             && proposalHandoff?.context?.acceptedFindingIds?.length === selected
             && proposalHandoff?.context?.sourceChangeAllowed === false,
+          implementationHandoffValid: implementationHandoff?.supported === true
+            && implementationHandoff?.context?.sourceChangeAllowed === true
+            && Boolean(implementationHandoff?.context?.projectRoot)
+            && implementationHandoff?.prompt?.includes('В ЧАТЕ')
+            && implementationHandoff?.prompt?.includes('Не запускай полное AI-ревью автоматически'),
+          directFixEntryPoint,
           handoffPanelWorks,
           contextProposalAction,
           importWorks: Boolean(importWorks),
           compareVariantsWork,
           layerControlsWork: document.querySelectorAll('[data-canvas-layer]').length === 1
-            && document.querySelectorAll('.mode-button[data-view]').length === 4
+            && document.querySelectorAll('.mode-button[data-view]').length === 5
             && document.querySelectorAll('.compare-version-select').length === 2,
+          prototypeForcesInteraction,
+          prototypeNavigationWorks,
+          prototypeTreePreservesMode,
+          screenScenarioControlsWork,
+          stateGalleryWorks,
+          screenScenarioDiagnosticsWork,
           markerNumberMatches,
           markerPopoverOpens,
           markerPopoverCollapses,
@@ -525,7 +592,10 @@ async function main() {
           reviewEntryPoint: Boolean(document.querySelector('[data-inspector-tab="review"]')),
           sourceBeforeApproval,
           sourceAfterApproval,
-          sourceApprovalGuard: sourceRequest?.requiresExplicitSourceApproval === true,
+          sourceApprovalGuard: sourceRequest?.sourceChangeAllowed === true
+            && Boolean(sourceRequest?.projectRoot)
+            && Array.isArray(sourceRequest?.requiredChatReport)
+            && sourceRequest?.requestedAction?.includes('do not run a full AI review'),
           revisionVisible,
           selectionPreserved,
           scrollPreserved,
@@ -539,16 +609,20 @@ async function main() {
       returnByValue: true,
       awaitPromise: true,
     });
+    if (workflowResponse.exceptionDetails) {
+      throw new Error(`Review workflow evaluation failed: ${workflowResponse.exceptionDetails.exception?.description || workflowResponse.exceptionDetails.text || 'unknown error'}`);
+    }
     const workflow = workflowResponse.result?.value || {};
     if (!workflow.reviewEntryPoint) throw new Error('Review workflow entry point is missing');
     if (workflow.totalBefore > 0 && (
       !workflow.auditLinks || !workflow.linkedVisible || workflow.totalAfter !== workflow.totalBefore + workflow.actionableGroups + 1
       || workflow.autoReviewFindings !== workflow.actionableGroups + 1 || !workflow.autoReviewButton
       || !workflow.agentReviewButtonEnabled || !workflow.expertReviewButtonEnabled || !workflow.expertRequestValid
-      || !workflow.expertHandoffValid || !workflow.proposalHandoffValid
+      || !workflow.expertHandoffValid || !workflow.proposalHandoffValid || !workflow.implementationHandoffValid || !workflow.directFixEntryPoint
       || !workflow.handoffPanelWorks
       || !workflow.contextProposalAction || !workflow.importWorks || !workflow.compareVariantsWork || !workflow.reviewSectionsWork
-      || !workflow.layerControlsWork || !workflow.markerNumberMatches || !workflow.markerPopoverOpens
+      || !workflow.layerControlsWork || !workflow.prototypeForcesInteraction || !workflow.prototypeNavigationWorks || !workflow.prototypeTreePreservesMode
+      || !workflow.screenScenarioControlsWork || !workflow.stateGalleryWorks || !workflow.screenScenarioDiagnosticsWork || !workflow.markerNumberMatches || !workflow.markerPopoverOpens
       || !workflow.markerPopoverCollapses || !workflow.commentPopoverOpens || !workflow.commentPopoverCollapses
       || !workflow.userCommentHasDistinctColor || !workflow.markersFollowComparedViews || !workflow.railCommandsWork || !workflow.railMenusWork || !workflow.railFileGeometryWorks
       || !workflow.markersToggleWork || !workflow.versionArchitectureWorks

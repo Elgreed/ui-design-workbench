@@ -61,6 +61,13 @@ Use JSON with `version: 1`. The renderer tolerates omitted optional fields but e
       }
     ]
   },
+  "scenarioFixtures": {
+    "home.populated": {
+      "nodeOverrides": {
+        "home-title": {"text": "Welcome back, Maya"}
+      }
+    }
+  },
   "screens": [
     {
       "id": "home",
@@ -72,6 +79,17 @@ Use JSON with `version: 1`. The renderer tolerates omitted optional fields but e
       "source": {"file": "feature/home/HomeScreen.kt", "line": 18, "symbol": "HomeScreen"},
       "confidence": "high",
       "root": "home-root",
+      "defaultScenarioId": "populated",
+      "defaultScenarioLabel": "Structure",
+      "scenarios": [
+        {"id": "populated", "label": "Sample data", "fixtureRef": "home.populated"},
+        {
+          "id": "empty",
+          "label": "Empty",
+          "description": "First-use state evidenced by the source branch",
+          "nodeOverrides": {"home-title": {"text": "No projects yet"}}
+        }
+      ],
       "viewport": {"width": 390, "height": 844, "device": "phone"}
     }
   ],
@@ -110,6 +128,12 @@ Use JSON with `version: 1`. The renderer tolerates omitted optional fields but e
 ```
 
 Versioned proposals, expert-audit findings, and annotations live under `review`; base `nodes` remain the `Before` snapshot. Read [review-workflow.md](review-workflow.md) for the schema and approval lifecycle and [ui-reviewer.md](ui-reviewer.md) for finding quality and severity rules.
+
+## Screen scenarios and mock data
+
+Use `screen.scenarios` for complete, meaningful screen states and `scenarioFixtures` for reusable deterministic data patches. A scenario may contain `fixtureRef`, sparse `nodeOverrides`, and `nodeStates`; the scenario patch is applied after the selected review version. `defaultScenarioId` may select a populated fixture when the preview opens. The single-screen and prototype views show a scenario switcher only when the current screen declares at least one extra scenario; the States view then lays all declared scenarios out together.
+
+Do not stamp a universal `loading/error/success` trio onto every screen. Derive scenarios from source branches and the screen task: a queue may need populated, empty, paused, and failed; an import flow may need initial, file-selected, importing, success, and invalid-file; settings may need clean, dirty, validation-error, and saved. Keep only the states needed by the requested `mockData.mode`: `representative` means one realistic populated fixture plus critical alternate states, while `exhaustive` adds evidenced boundary cases. Generated values must be deterministic, visibly synthetic, locale-appropriate, and free of real user data or secrets.
 
 ## Platform families and profiles
 

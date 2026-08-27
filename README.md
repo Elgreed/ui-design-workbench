@@ -4,14 +4,15 @@
 
 UI Design Workbench is a CLI-first UI analysis and design tool with a thin portable Agent Skill adapter. It reconstructs, generates, redesigns, and deeply reviews product interfaces from repository source code, producing an offline interactive HTML workbench without running the target app, emulator, simulator, build, or development server.
 
-The repository UI remains the evidence source. The generated `ui-ir.json` is the editable design model; `ui-preview.html` is its standalone projection. Application source stays read-only until the user separately approves a concrete implementation diff.
+The repository UI remains the evidence source. The generated `ui-ir.json` is the editable design model; `ui-preview.html` is its standalone projection. Review and proposal jobs keep application source read-only. The explicit **Apply to project** or **Fix everything in project** action authorizes a separate implementation job that changes real UI source, runs incremental sync and targeted checks, and reports every finding in chat.
 
 ## What it provides
 
 - Repository-aware discovery of screens, routes, logical views, navigation targets, components, tokens, fonts, and assets.
 - Incremental, content-fingerprinted project context that avoids repeated repository-wide scans and reduces model context usage.
 - Complete hierarchical screen tree with active-screen and navigation-target preview states.
-- All screens, Prototype, Single screen, and a dedicated Compare workspace with explicit left/right versions plus split or overlay layouts.
+- All screens, Prototype, Single screen, an optional per-screen States gallery, and a dedicated Compare workspace with explicit left/right versions plus split or overlay layouts.
+- Deterministic synthetic fixtures with sparse, screen-specific scenarios; no universal loading/error/success set is stamped onto every screen.
 - Stable shared-canvas zoom, middle-button drag panning, resizable/collapsible panels, inspect mode, and per-view finding/comment markers with separate colors and anchored popovers.
 - A compact command rail with the File/menu trigger first, followed by Screens, Properties, Review, Comments, locale selection, and panel visibility.
 - Runtime Russian/English workbench localization that never translates reconstructed product content.
@@ -85,6 +86,12 @@ uidw --repo <repo> ui-mode --enable
 uidw --repo <repo> ui-mode --disable
 ```
 
+Initialization can also opt into mock data. The default is `none`; `representative` creates one realistic populated fixture plus only critical states justified by each screen, while `exhaustive` adds evidenced boundary states:
+
+```text
+uidw --repo <repo> init --mock-data representative
+```
+
 When enabled, the compact project context tells compatible agents to use existing project components and the detected Android, Android TV, iOS/iPadOS, macOS, Windows, or Web conventions during ordinary UI implementation tasks. It checks only relevant platform, accessibility, state, input, and adaptive-layout concerns. It does **not** automatically start an audit, redesign, HTML preview, emulator, or application run.
 
 The setting is stored per project in the same user cache as the UI index by default. Switching it refreshes only compact context and does not rescan unchanged UI source. Use `init --project-cache` only when the project intentionally needs portable ignored configuration.
@@ -125,7 +132,7 @@ By default, derived state is stored in the OS user cache, never in the installed
 4. It renders `ui-preview.html` and runs strict coverage/platform checks.
 5. For review work, it runs interaction, state, typography, geometry, accessibility, and UX passes across declared screens and profiles.
 6. The user selects findings, compares correction proposals, comments, and accepts or rejects a design version.
-7. Only after acceptance can the agent prepare a separate source-change plan. Editing source still requires explicit approval of intended files and diff.
+7. The safe path applies an approved proposal to the project; the fast path fixes all findings directly. Both are explicit source-edit actions. The agent updates real source and existing finding statuses, runs incremental sync plus targeted checks, and returns a numbered chat report. A second full AI review is never automatic.
 
 Render a completed IR:
 

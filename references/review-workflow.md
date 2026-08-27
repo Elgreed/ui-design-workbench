@@ -100,7 +100,9 @@ When `review.audit` exists, its findings appear above user annotations. Every fa
 
 Each finding has one stable review number used in both the Problems list and its canvas marker. A reliably mapped screen/node receives a numbered circle; clicking it opens one anchored description card and the top-right collapse action restores the circle. Current finding filters and the Problems visibility toggle update list and canvas together. Each finding can focus its affected screen/node and, when linked to `proposalVersionId`, open the dedicated Compare view. A proposal declares only verified corrections in `resolvedFindingIds`; those markers disappear on the corrected version but remain on the baseline side and in review history. The reviewer chooses `В исправление`, `Не исправлять`, or `Позже`. The correction queue reports how many selected findings already have a proposal and how many need a new one. `Создать вариант макета` prepares an agent task scoped to the review directory. The task includes selected finding IDs, active and baseline versions, annotations, review scope, and `sourceChangeAllowed: false`; it may create up to two alternatives only when a real UX tradeoff exists. `Скопировать задание` and `ui-fix-request.json` remain portable fallbacks.
 
-The queue communicates five phases: `Проблемы → Выбрано → Макет → Согласовано → Проект`. Preparing a proposal never changes application source. Only after a proposal version is explicitly accepted does `Подготовить внедрение в проект` become available; it exports `ui-source-change-request.json` as a planning handoff and still requires a separate approval of files and diff before source edits.
+The queue communicates five concrete outcomes: `Найдено → Исправлено в макете → Подтверждено → Применение → Проверено`. The safe path previews corrections first and exposes `Применить в проекте` only after the selected preview-solvable findings are resolved in the active proposal and the user approves it. A separate `Исправить всё в проекте` action is the explicit fast-path authorization: it prepares one implementation job for every current finding and bypasses proposal approval. Implementation jobs set `sourceChangeAllowed: true`, include `projectRoot`, stable finding IDs, annotations, and source targets, and must change real project files rather than merely rebuilding `After`.
+
+After implementation, run incremental `uidw sync` and only targeted checks for affected screens, finding IDs, and project modules. Do not automatically repeat the full AI review; that is an explicit user action. The agent's final chat response must be a plain numbered list of every selected finding with screen, problem, implemented fix, changed files, verification result, and any remaining blocker. Keep this textual report in chat, not as a duplicate HTML block.
 
 Use [ui-reviewer.md](ui-reviewer.md) for evidence, severity, coverage, and proposal rules. Keep expert findings separate from user annotations: findings are the AI reviewer's reasoned analysis, while annotations are reviewer feedback on the current or proposed design.
 
@@ -122,7 +124,7 @@ python <skill-dir>/scripts/merge_review_state.py <review-dir>/ui-ir.json <review
 5. Render again. The reviewer accepts or rejects each annotation and the version separately.
 6. Mark an annotation `resolved` only after its proposal is accepted. Rejected proposals remain in history and are never silently replaced.
 
-Do not edit application source during this loop. After explicit source-edit approval, implement only the accepted version and list its affected source mappings.
+Do not edit application source during review or proposal generation. After the user explicitly chooses `Применить в проекте` or `Исправить всё в проекте`, implement only the authorized findings and list their affected source mappings and verification results in chat.
 
 ## Offline boundary
 

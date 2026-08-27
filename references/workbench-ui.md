@@ -64,13 +64,14 @@ Official pattern references:
 
 ## Interaction contract
 
-- `All screens`, `Prototype`, `Single screen`, and `Compare` are view modes and stay in one group. No other persistent control may also enter Compare.
+- `All screens`, `Prototype`, `Single screen`, optional `States`, and `Compare` are view modes and stay in one group. `States` is disabled when the current screen has no declared alternatives; do not create filler states merely to enable it. No other persistent control may also enter Compare.
 - The bottom canvas palette keeps view modes plus only the pointer/Interact escape action. `Properties` and `Comments` in the rail activate Inspect and Comment respectively; the Problems visibility toggle lives inside the Problems panel, so these commands are not duplicated in the persistent bottom palette.
-- Prototype is the only mode in which declared navigation changes screens.
+- Prototype is the only mode in which declared navigation changes screens. Entering it activates Interact, and selecting a screen in the tree preserves Prototype instead of silently falling back to Single screen.
+- Single screen and Prototype show a compact contextual scenario switcher only when `screen.scenarios` contains alternatives. `States` lays those scenarios out as separate stable devices on one pannable/zoomable canvas; each device retains its own scenario patch and label.
 - Selecting a node synchronizes canvas highlight, layer/screen context, and the Properties or Comments panel without losing canvas scroll.
 - Menus and popovers are mutually exclusive and close on action, outside click, `Escape`, or view change.
 - The current screen and hovered navigation destination use distinct colors.
-- Design approval and source implementation are separate phases with separate actions.
+- Design approval and source implementation are separate phases with separate actions. The primary safe flow is preview → approve → `Apply to project`; the Problems workspace also exposes one unmistakable `Fix everything in project` fast path. Never label a generated After mockup as a completed project fix.
 - Ordinary views render exactly one version chosen in the document bar. Version selection never changes the view mode.
 - Compare mode allows any two retained review versions, not only baseline versus latest, while preserving the immutable baseline. Its left/right selectors and Split/Overlay controls appear only inside the dedicated Compare context and never duplicate the main view switcher.
 - `Problems` is a visibility layer, not a separate review mode. Its marker set follows the current severity/source/screen/focused-block filters and never invents an anchor for a finding whose screen cannot be located.

@@ -37,6 +37,7 @@ CLI_VERSION = "0.1.0"
 STATE_DIR_NAME = ".ui-design-workbench"
 CONFIG_NAME = "config.json"
 UI_MODE_KEY = "uiMode"
+MOCK_DATA_KEY = "mockData"
 CACHE_NAME = "cache-state.json"
 SCAN_NAME = "ui-scan.json"
 IR_NAME = "ui-ir.json"
@@ -113,11 +114,12 @@ def default_config() -> dict[str, Any]:
         "maxContextComponents": 200,
         "handoffProvider": "generic",
         UI_MODE_KEY: {"enabled": False},
+        MOCK_DATA_KEY: {"mode": "none", "seed": "stable"},
     }
 
 
 def config_hash(config: dict[str, Any]) -> str:
-    scan_config = {key: value for key, value in config.items() if key != UI_MODE_KEY}
+    scan_config = {key: value for key, value in config.items() if key not in {UI_MODE_KEY, MOCK_DATA_KEY}}
     payload = json.dumps(scan_config, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
@@ -128,7 +130,26 @@ def normalized_config(value: Any) -> dict[str, Any]:
         config.update(value)
     mode = config.get(UI_MODE_KEY)
     config[UI_MODE_KEY] = {"enabled": bool(mode.get("enabled", False))} if isinstance(mode, dict) else {"enabled": False}
+    mock_data = config.get(MOCK_DATA_KEY)
+    mock_mode = mock_data.get("mode", "none") if isinstance(mock_data, dict) else "none"
+    if mock_mode not in {"none", "representative", "exhaustive"}:
+        mock_mode = "none"
+    config[MOCK_DATA_KEY] = {"mode": mock_mode, "seed": "stable"}
     return config
+
+
+def mock_data_context(config: dict[str, Any]) -> dict[str, Any]:
+    mode = str(config.get(MOCK_DATA_KEY, {}).get("mode", "none"))
+    enabled = mode != "none"
+    result: dict[str, Any] = {"enabled": enabled, "mode": mode, "default": "off", "seed": "stable"}
+    if enabled:
+        result["instruction"] = (
+            "Create deterministic, non-sensitive, platform-appropriate screen scenarios only when supported by "
+            "the screen task or source branches. Use reusable scenarioFixtures plus sparse screen.scenarios; do "
+            "not stamp the same loading/error/success set onto every screen. Representative mode keeps one "
+            "populated fixture and only critical alternate states; exhaustive mode also covers evidenced boundary states."
+        )
+    return result
 
 
 def ui_mode_context(config: dict[str, Any], detected_platforms: list[str] | None = None) -> dict[str, Any]:
@@ -375,6 +396,7 @@ def compact_context(
         "components": inventory.get("components", [])[:max_components],
         "warnings": inventory.get("warnings", []),
         UI_MODE_KEY: ui_mode_context(config, inventory.get("detectedPlatforms", [])),
+        MOCK_DATA_KEY: mock_data_context(config),
         "instructions": "Read prioritySourceFiles only when cacheStatus is stale or the requested screen is not fully represented in ui-ir.json.",
     }
 
@@ -413,6 +435,7 @@ def inspect_cache(root: Path, verify_content: bool = False) -> tuple[dict[str, A
         "irFile": str(paths["ir"]),
         "graphFile": str(paths["graph"]),
         UI_MODE_KEY: ui_mode_context(config),
+        MOCK_DATA_KEY: mock_data_context(config),
     }
     return result, current_manifest, paths, config
 
@@ -475,7 +498,7 @@ def sync_project(root: Path, force: bool = False, verify_content: bool = False) 
     return report
 
 
-def initialize(root: Path, force: bool = False, project_cache: bool = False, ui_mode: bool = False) -> dict[str, Any]:
+def initialize(root: Path, force: bool = False, project_cache: bool = False, ui_mode: bool = False, mock_data_mode: str = "none") -> dict[str, Any]:
     if project_cache:
         config_path = root / STATE_DIR_NAME / CONFIG_NAME
         config = normalized_config(read_json(config_path, {}))
@@ -485,6 +508,7 @@ def initialize(root: Path, force: bool = False, project_cache: bool = False, ui_
         config_path = initial_paths["config"]
         config = normalized_config(read_json(config_path, {}))
     config[UI_MODE_KEY] = {"enabled": bool(ui_mode)}
+    config[MOCK_DATA_KEY] = {"mode": mock_data_mode, "seed": "stable"}
     config_path.parent.mkdir(parents=True, exist_ok=True)
     write_json(config_path, config)
     paths = state_paths(root)
@@ -492,7 +516,7 @@ def initialize(root: Path, force: bool = False, project_cache: bool = False, ui_
     if project_cache and not paths["gitignore"].exists():
         paths["gitignore"].write_text(STATE_GITIGNORE, encoding="utf-8")
     result = sync_project(root, force=force)
-    return {**result, UI_MODE_KEY: ui_mode_context(config, read_json(paths["scan"], {}).get("detectedPlatforms", []))}
+    return {**result, UI_MODE_KEY: ui_mode_context(config, read_json(paths["scan"], {}).get("detectedPlatforms", [])), MOCK_DATA_KEY: mock_data_context(config)}
 
 
 def configure_ui_mode(root: Path, enabled: bool | None = None) -> dict[str, Any]:
@@ -595,6 +619,7 @@ def write_screen_context(paths: dict[str, Path], screen_query: str) -> Path:
         "tokens": ir.get("tokens", {}),
         "warnings": base.get("warnings", []),
         UI_MODE_KEY: base.get(UI_MODE_KEY, {"enabled": False, "default": "off"}),
+        MOCK_DATA_KEY: base.get(MOCK_DATA_KEY, {"enabled": False, "mode": "none", "default": "off"}),
         "uiGraphFile": str(paths["graph"]),
     }
     slug = re.sub(r"[^a-z0-9]+", "-", str(screen.get("id", "screen")).lower()).strip("-") or "screen"
@@ -631,6 +656,24 @@ def resolve_init_ui_mode(explicit: bool | None, as_json: bool) -> bool:
     except EOFError:
         return False
     return answer in {"y", "yes"}
+
+
+def resolve_init_mock_data(explicit: str | None, as_json: bool) -> str:
+    if explicit is not None:
+        return explicit
+    if as_json or not sys.stdin.isatty():
+        return "none"
+    print(
+        "Optional mock data makes data-driven screens useful without running the application.\n"
+        "Representative mode creates one realistic populated fixture and only screen-specific critical states;\n"
+        "it does not add the same loading/error/success set to every screen. The feature is disabled by default.",
+        file=sys.stderr,
+    )
+    try:
+        answer = input("Mock data mode [n]one/[r]epresentative/[e]xhaustive? [n]: ").strip().lower()
+    except EOFError:
+        return "none"
+    return {"r": "representative", "representative": "representative", "e": "exhaustive", "exhaustive": "exhaustive"}.get(answer, "none")
 
 
 def render_artifact(ir_path: Path, output: Path, allow_draft: bool, agent: str) -> dict[str, Any]:
@@ -685,6 +728,7 @@ def parse_args() -> argparse.Namespace:
     init_mode = init_parser.add_mutually_exclusive_group()
     init_mode.add_argument("--ui-mode", dest="ui_mode", action="store_true", default=None, help="Enable platform guidance for ordinary UI tasks without prompting")
     init_mode.add_argument("--no-ui-mode", dest="ui_mode", action="store_false", default=None, help="Keep platform guidance disabled without prompting")
+    init_parser.add_argument("--mock-data", choices=("none", "representative", "exhaustive"), default=None, help="Generate only relevant deterministic mock scenarios; default is none")
     status_parser = subparsers.add_parser("status", help="Check whether the cached UI index is current")
     status_parser.add_argument("--verify-content", action="store_true", help="Hash every candidate file instead of trusting unchanged metadata")
     sync_parser = subparsers.add_parser("sync", help="Refresh the UI index only when relevant files changed")
@@ -718,7 +762,7 @@ def main() -> int:
         print(f"Repository directory does not exist: {root}", file=sys.stderr)
         return 2
     if args.command == "init":
-        result = initialize(root, args.force, args.project_cache, resolve_init_ui_mode(args.ui_mode, args.json))
+        result = initialize(root, args.force, args.project_cache, resolve_init_ui_mode(args.ui_mode, args.json), resolve_init_mock_data(args.mock_data, args.json))
     elif args.command == "status":
         result, _, _, _ = inspect_cache(root, args.verify_content)
     elif args.command == "sync":

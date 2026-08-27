@@ -53,7 +53,7 @@ def build_report(ir: dict[str, Any]) -> dict[str, Any]:
             gate("standards", "Platform-standard coverage", audit.get("standardCoverage", 0) == 1, audit.get("standardCoverage", 0), 1),
             gate("targets", "Interactive target coverage", audit.get("targetCoverage", 0) == 1, audit.get("targetCoverage", 0), 1, audit.get("targetFailures")),
             gate("contrast", "Resolvable contrast coverage", audit.get("contrastCoverage", 0) == 1 and not audit.get("contrastFailures"), audit.get("contrastCoverage", 0), 1, {"failures": audit.get("contrastFailures"), "unresolved": audit.get("contrastUnresolved")}),
-            gate("states", "Required state coverage", audit.get("stateCoverage", 0) == 1, audit.get("stateCoverage", 0), 1, audit.get("missingStates")),
+            gate("states", "Declared scenario coverage", audit.get("stateCoverage", 0) == 1, audit.get("stateCoverage", 0), 1, audit.get("missingStates")),
         ])
 
     failed = [item for item in gates if item["status"] == "fail"]

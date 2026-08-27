@@ -41,6 +41,7 @@ class IncrementalCacheTests(unittest.TestCase):
         paths = uidw.state_paths(self.repo)
         self.assertEqual(report["status"], "synced")
         self.assertFalse(report["uiMode"]["enabled"])
+        self.assertEqual(report["mockData"]["mode"], "none")
         self.assertFalse((self.repo / uidw.STATE_DIR_NAME).exists())
         self.assertTrue(paths["config"].is_file())
         self.assertTrue(paths["cache"].is_file())
@@ -75,6 +76,29 @@ class IncrementalCacheTests(unittest.TestCase):
         with mock.patch.object(uidw.sys, "stdin", fake_stdin), mock.patch("builtins.input", return_value="yes"):
             self.assertTrue(uidw.resolve_init_ui_mode(None, False))
         self.assertFalse(uidw.resolve_init_ui_mode(None, True))
+
+    def test_mock_data_is_opt_in_screen_specific_context_without_rescan(self) -> None:
+        uidw.initialize(self.repo)
+        paths = uidw.state_paths(self.repo)
+        config = uidw.normalized_config(uidw.read_json(paths["config"], {}))
+        config[uidw.MOCK_DATA_KEY] = {"mode": "representative", "seed": "stable"}
+        uidw.write_json(paths["config"], config)
+        with mock.patch.object(uidw, "analyze_file", wraps=uidw.analyze_file) as analyze:
+            report = uidw.sync_project(self.repo)
+        self.assertEqual(report["status"], "clean")
+        analyze.assert_not_called()
+        context = uidw.read_json(paths["context"], {})
+        self.assertEqual(context["mockData"]["mode"], "representative")
+        self.assertIn("do not stamp", context["mockData"]["instruction"])
+
+    def test_mock_data_prompt_and_noninteractive_default(self) -> None:
+        fake_stdin = mock.Mock()
+        fake_stdin.isatty.return_value = True
+        with mock.patch.object(uidw.sys, "stdin", fake_stdin), mock.patch("builtins.input", return_value="r"):
+            self.assertEqual(uidw.resolve_init_mock_data(None, False), "representative")
+        with mock.patch.object(uidw.sys, "stdin", fake_stdin), mock.patch("builtins.input", return_value="e"):
+            self.assertEqual(uidw.resolve_init_mock_data(None, False), "exhaustive")
+        self.assertEqual(uidw.resolve_init_mock_data(None, True), "none")
 
     def test_clean_sync_reuses_every_per_file_record(self) -> None:
         uidw.initialize(self.repo)

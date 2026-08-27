@@ -22,7 +22,7 @@ The project key is derived from the normalized absolute repository path. The ins
 - `ui-context.json`: bounded model-facing summary with changed files and priority reads.
 - `ui-context-<screen>.json`: one screen subtree and its directly referenced sources.
 - `sync-report.json`: last invalidation reason, changed files, and affected screen IDs.
-- `config.json`: cache preferences and the opt-in `uiMode.enabled` flag. UI-mode changes refresh model context but are excluded from the scan fingerprint.
+- `config.json`: cache preferences, the opt-in `uiMode.enabled` flag, and `mockData.mode` (`none`, `representative`, or `exhaustive`). UI-mode and mock-data changes refresh model context but are excluded from the source-scan fingerprint.
 
 ## Commands
 
@@ -47,3 +47,5 @@ Metadata-only changes update the manifest without rescanning. `--verify-content`
 Do not run a watcher, bridge server, emulator, or target application. Lazy command-boundary synchronization is deterministic, portable, and inexpensive for agent workflows.
 
 Interactive `init` explains UI guidance and asks whether to enable it with `[y/N]`; the default and every non-interactive invocation are off. `init --ui-mode` and `init --no-ui-mode` make automation deterministic. Later use `ui-mode --enable`, `ui-mode --disable`, or bare `ui-mode` for status. Enabling guidance changes agent behavior only for UI-related tasks and does not imply review, redesign, preview generation, or source-edit permission.
+
+Interactive `init` separately offers mock data; the default is `none`, and automation uses `init --mock-data none|representative|exhaustive`. The cached setting instructs agents how much scenario data to author, but never causes another repository scan by itself. Preserve existing `scenarioFixtures` and `screen.scenarios` for unaffected screen IDs during incremental sync; regenerate only fixtures whose source dependencies changed.
