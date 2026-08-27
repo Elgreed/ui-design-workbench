@@ -63,7 +63,7 @@ Do not reward decoration. Simpler means fewer decisions, clearer grouping, safer
 
 A visual snapshot is insufficient when the deliverable contains working controls. Exercise the generated HTML preview before completing the review, without running the real application:
 
-1. Run every workbench view at least once: `All screens`, `Prototype`, `Single screen`, and `Before / After` when available.
+1. Run every workbench view at least once: `All screens`, `Prototype`, `Single screen`, and the dedicated `Compare` view when retained versions are available. Switch the active ordinary-view version independently.
 2. In `All screens`, test Fit plus manual zoom at 20%, 100%, and 200%. Screen geometry and relative positions must remain stable: zoom scales one shared canvas, its scrollable bounds grow or shrink with that canvas, and cards must not reflow into or overlap one another.
 3. Open each application-menu item in sequence. At most one menu or popover may remain open. Verify dismissal by selecting an item, clicking outside, pressing `Escape`, changing view, and reopening the same trigger.
 4. Exercise navigation, back/forward, panel show/hide, panel resizing, interaction-mode changes, repeated clicks, and the relevant product menus, drawers, dialogs, tabs, and state actions. Check both the end state and intermediate/transient states.

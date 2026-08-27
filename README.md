@@ -11,7 +11,7 @@ The repository UI remains the evidence source. The generated `ui-ir.json` is the
 - Repository-aware discovery of screens, routes, logical views, navigation targets, components, tokens, fonts, and assets.
 - Incremental, content-fingerprinted project context that avoids repeated repository-wide scans and reduces model context usage.
 - Complete hierarchical screen tree with active-screen and navigation-target preview states.
-- All screens, Prototype, Single screen, and a stable Before/Compare/After group with split or overlay comparison.
+- All screens, Prototype, Single screen, and a dedicated Compare workspace with explicit left/right versions plus split or overlay layouts.
 - Stable shared-canvas zoom, middle-button drag panning, resizable/collapsible panels, inspect mode, anchored comments, and feedback export.
 - Runtime Russian/English workbench localization that never translates reconstructed product content.
 - Evidence-based UI/UX review with deterministic interaction/geometry diagnostics and separate expert UX assessment.
@@ -70,7 +70,7 @@ Use ui-design-workbench to redesign this Android TV browse screen using the exis
 TV Material, D-pad navigation, restored focus, ten-foot readability, and overscan-safe content.
 ```
 
-Workbench controls are intentionally editor-like: hold the middle mouse button and drag to pan the full canvas; use the stable `Before / Compare / After` segment to select version visibility; enable or hide numbered Problems independently. The language menu persists `Русский` or `English` and can also be selected with `?lang=ru` or `?lang=en`. Only workbench chrome is localized.
+Workbench controls are intentionally editor-like: hold the middle mouse button and drag to pan the full canvas; choose one active version for ordinary views; open the dedicated Compare view to select its left and right versions; enable or hide numbered Problems independently. Findings declared as resolved by a proposal disappear on that version while remaining visible on the immutable baseline. The language menu persists `Русский` or `English` and can also be selected with `?lang=ru` or `?lang=en`. Only workbench chrome is localized.
 
 ## Optional UI guidance mode
 

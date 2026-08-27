@@ -221,7 +221,7 @@ async function main() {
         importExpertReviewData({
           type: 'ui-design-workbench-expert-review-result', requestRevision: reviewRevision, project: ir.project?.name,
           summary: 'Smoke import', findings: [smokeFinding],
-          versions: [{ id: 'smoke-imported-proposal', label: 'Smoke proposal', kind: 'proposal', parent: baselineVersion, findingIds: [smokeFinding.id], nodeOverrides: {} }]
+          versions: [{ id: 'smoke-imported-proposal', label: 'Smoke proposal', kind: 'proposal', parent: baselineVersion, findingIds: [smokeFinding.id], resolvedFindingIds: [smokeFinding.id], nodeOverrides: {} }]
         });
         const importWorks = state.importedReview?.addedVersions === 1
           && findings.some(item => item.id === smokeFinding.id)
@@ -237,9 +237,9 @@ async function main() {
         setScreen(screens[0].id, 'compare');
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const compareVariantsWork = document.querySelectorAll('.compare-panel').length === 2
-          && document.querySelector('.version-select')?.hidden === true
-          && !document.querySelector('.compare-version-select')
-          && document.querySelector('[data-version-visibility="both"]')?.getAttribute('aria-pressed') === 'true';
+          && getComputedStyle(document.querySelector('.header-version-picker')).display === 'none'
+          && document.querySelectorAll('.compare-version-select').length === 2
+          && getComputedStyle(document.querySelector('.compare-workspace-controls')).display === 'flex';
         const smokeMarker = document.querySelector('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]');
         const smokeListNumber = document.querySelector('.finding-card[data-finding-id="' + CSS.escape(smokeFinding.id) + '"] .finding-list-index')?.textContent?.trim();
         const markerNumberMatches = Boolean(smokeMarker && smokeMarker.textContent.trim() === smokeListNumber);
@@ -259,12 +259,20 @@ async function main() {
         await new Promise(resolve => requestAnimationFrame(resolve));
         const markersRestore = Boolean(document.querySelector('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]'))
           && findingsToggle?.getAttribute('aria-pressed') === 'true';
-        setVersionVisibility('after');
+        state.activeVersion = 'smoke-imported-proposal';
+        versionSelect.value = state.activeVersion;
+        setScreen(screens[0].id, 'single');
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        const afterOnlyWorks = !state.showBefore && state.showAfter && state.view !== 'compare';
-        setVersionVisibility('both');
+        const resolvedMarkerHidden = !document.querySelector('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]');
+        state.activeVersion = baselineVersion;
+        versionSelect.value = state.activeVersion;
+        renderView();
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        const beforeAfterToggleWorks = afterOnlyWorks && state.showBefore && state.showAfter && state.view === 'compare';
+        const baselineMarkerRestored = Boolean(document.querySelector('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]'));
+        setView('compare');
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const resolvedMarkersStayOnBaseline = document.querySelectorAll('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]').length === 1;
+        const versionArchitectureWorks = resolvedMarkerHidden && baselineMarkerRestored && resolvedMarkersStayOnBaseline;
         const markerBeforeZoom = document.querySelector('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]')?.getBoundingClientRect();
         const anchorBeforeZoom = document.querySelector('.device[data-screen-id="' + CSS.escape(smokeFinding.screenId) + '"] .device-content')?.getBoundingClientRect();
         const markerOffsetBeforeZoom = markerBeforeZoom && anchorBeforeZoom ? {
@@ -311,16 +319,17 @@ async function main() {
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const markerLeaderWorks = leadersHiddenByDefault && leaderRevealsForOpenCard;
         setWorkbenchLocale('en', { remember: false, updateLocation: false });
-        const englishVersionLabels = [...document.querySelectorAll('[data-version-visibility]')].map(button => button.textContent.trim());
+        const localeMetrics = { englishCanvas: document.querySelector('.canvas-tools')?.getAttribute('aria-label'), englishVersionTitle: document.querySelector('.header-version-picker')?.getAttribute('title'), englishCompare: document.querySelector('.mode-button[data-view="compare"] .button-label')?.textContent?.trim() };
         const englishLocaleWorks = document.documentElement.lang === 'en'
           && document.querySelector('.canvas-tools')?.getAttribute('aria-label') === 'Canvas tools'
-          && document.querySelector('[data-version-visibility="both"]')?.getAttribute('title') === 'Show both versions'
-          && JSON.stringify(englishVersionLabels) === JSON.stringify(['Before', 'Compare', 'After']);
+          && document.querySelector('.header-version-picker')?.getAttribute('title') === 'Active mockup version'
+          && document.querySelector('.mode-button[data-view="compare"] .button-label')?.textContent?.trim() === 'Compare';
         setWorkbenchLocale('ru', { remember: false, updateLocation: false });
-        const russianVersionLabels = [...document.querySelectorAll('[data-version-visibility]')].map(button => button.textContent.trim());
+        Object.assign(localeMetrics, { russianCanvas: document.querySelector('.canvas-tools')?.getAttribute('aria-label'), russianVersionTitle: document.querySelector('.header-version-picker')?.getAttribute('title'), russianCompare: document.querySelector('.mode-button[data-view="compare"] .button-label')?.textContent?.trim() });
         const russianLocaleRestores = document.documentElement.lang === 'ru'
           && document.querySelector('.canvas-tools')?.getAttribute('aria-label') === 'Инструменты холста'
-          && JSON.stringify(russianVersionLabels) === JSON.stringify(['До', 'Сравнение', 'После']);
+          && document.querySelector('.header-version-picker')?.getAttribute('title') === 'Активная версия макета'
+          && document.querySelector('.mode-button[data-view="compare"] .button-label')?.textContent?.trim() === 'Сравнить';
         for (const id of Object.keys(state.findingDecisions)) state.findingDecisions[id] = 'pending';
         state.findingDecisions[smokeFinding.id] = 'accepted';
         renderFindings();
@@ -423,12 +432,13 @@ async function main() {
           importWorks: Boolean(importWorks),
           compareVariantsWork,
           layerControlsWork: document.querySelectorAll('[data-canvas-layer]').length === 1
-            && document.querySelectorAll('[data-version-visibility]').length === 3,
+            && document.querySelectorAll('.mode-button[data-view]').length === 4
+            && document.querySelectorAll('.compare-version-select').length === 2,
           markerNumberMatches,
           markerPopoverOpens,
           markerPopoverCollapses,
           markersToggleWork: markersHide && markersRestore,
-          beforeAfterToggleWorks,
+          versionArchitectureWorks,
           markerTracksZoom,
           markerTrackMetrics,
           markerLayoutStable,
@@ -437,13 +447,14 @@ async function main() {
           middleMousePanWorks: middlePanWorks && middlePanReleases,
           middlePanMetrics,
           localeSwitchWorks: englishLocaleWorks && russianLocaleRestores,
+          localeMetrics,
           reviewSectionsWork: ['summary', 'problems', 'changes'].every(section => Boolean(document.querySelector('[data-review-section="' + section + '"]'))),
           auditLinks: document.querySelectorAll('[data-audit-findings]').length,
           linkedVisible,
           selected,
           requestFindings: request?.acceptedFindingIds?.length || 0,
           runtimeActionable,
-          menuAction: Boolean(document.querySelector('.open-fix-queue')),
+          reviewEntryPoint: Boolean(document.querySelector('[data-inspector-tab="review"]')),
           sourceBeforeApproval,
           sourceAfterApproval,
           sourceApprovalGuard: sourceRequest?.requiresExplicitSourceApproval === true,
@@ -461,7 +472,7 @@ async function main() {
       awaitPromise: true,
     });
     const workflow = workflowResponse.result?.value || {};
-    if (!workflow.menuAction) throw new Error('Review workflow menu action is missing');
+    if (!workflow.reviewEntryPoint) throw new Error('Review workflow entry point is missing');
     if (workflow.totalBefore > 0 && (
       !workflow.auditLinks || !workflow.linkedVisible || workflow.totalAfter !== workflow.totalBefore + workflow.actionableGroups + 1
       || workflow.autoReviewFindings !== workflow.actionableGroups + 1 || !workflow.autoReviewButton
@@ -470,7 +481,7 @@ async function main() {
       || !workflow.handoffPanelWorks
       || !workflow.contextProposalAction || !workflow.importWorks || !workflow.compareVariantsWork || !workflow.reviewSectionsWork
       || !workflow.layerControlsWork || !workflow.markerNumberMatches || !workflow.markerPopoverOpens
-      || !workflow.markerPopoverCollapses || !workflow.markersToggleWork || !workflow.beforeAfterToggleWorks
+      || !workflow.markerPopoverCollapses || !workflow.markersToggleWork || !workflow.versionArchitectureWorks
       || !workflow.markerTracksZoom || !workflow.markerLayoutStable || !workflow.markerLeaderWorks || !workflow.middleMousePanWorks || !workflow.localeSwitchWorks
       || workflow.selected !== 1 || workflow.requestFindings !== 1 || !workflow.runtimeActionable
       || !workflow.sourceBeforeApproval || !workflow.sourceAfterApproval

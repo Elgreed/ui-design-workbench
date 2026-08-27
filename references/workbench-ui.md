@@ -8,12 +8,12 @@ Give each persistent region one job:
 
 - a narrow left rail switches workbench areas and remains available when panels collapse;
 - the left panel contains project/screen navigation, hierarchy, search, and low-priority coverage metadata;
-- one compact document bar contains product identity, application menus, current screen path, active version, and current mode status;
+- one compact document bar contains product identity, the minimal application menu, current screen path, and the single active version used by ordinary views;
 - the canvas owns screen previews and comparisons;
-- a floating canvas palette switches view and interaction tools;
-- one compact canvas strip independently toggles `Problems`, then uses one stable `Before / Compare / After` segmented group for version visibility; comparison-layout controls keep their space and become enabled only in Compare so the strip never jumps;
+- a floating canvas palette switches view and interaction tools and independently toggles `Problems`;
+- Compare is a dedicated view: its compact contextual bar selects the left and right versions and then the split/overlay layout. Do not mix version selection with view selection through a `Before / Compare / After` visibility group;
 - a small bottom-right cluster owns zoom only;
-- the right panel is contextual and tabbed into `Properties`, `Review`, and `Comments` rather than stacking all three workflows.
+- the right panel is contextual and shows only `Properties`, `Review`, or `Comments`. Review opens from the rail; Inspect and Comment tools open their matching areas, so a second persistent tab row is unnecessary.
 
 Do not duplicate the same primary control in several persistent regions. Menu commands may repeat toolbar actions only as a conventional keyboard/menu fallback. Keep document actions, canvas tools, object properties, review decisions, and navigation visually distinct.
 
@@ -63,17 +63,18 @@ Official pattern references:
 
 ## Interaction contract
 
-- `All screens`, `Prototype`, `Single screen`, and `Compare` are view modes and stay in one group.
+- `All screens`, `Prototype`, `Single screen`, and `Compare` are view modes and stay in one group. No other persistent control may also enter Compare.
 - `Interact`, `Inspect`, and `Comment` are canvas tools and stay in a separate group.
 - Prototype is the only mode in which declared navigation changes screens.
 - Selecting a node synchronizes canvas highlight, layer/screen context, and the Properties or Comments panel without losing canvas scroll.
 - Menus and popovers are mutually exclusive and close on action, outside click, `Escape`, or view change.
 - The current screen and hovered navigation destination use distinct colors.
 - Design approval and source implementation are separate phases with separate actions.
-- Compare mode allows any two retained review versions, not only baseline versus latest, while preserving the immutable baseline.
-- `Before / Compare / After` is a three-state segmented visibility control: Before and After show one version without changing the surrounding tool geometry; Compare shows both and enables Split/Overlay. Localize its visible labels (`До / Сравнение / После` in Russian) while keeping stable internal values. The active proposal is chosen in the Changes workflow; the canvas strip controls visibility only.
+- Ordinary views render exactly one version chosen in the document bar. Version selection never changes the view mode.
+- Compare mode allows any two retained review versions, not only baseline versus latest, while preserving the immutable baseline. Its left/right selectors and Split/Overlay controls appear only inside the dedicated Compare context and never duplicate the main view switcher.
 - `Problems` is a visibility layer, not a separate review mode. Its marker set follows the current severity/source/screen/focused-block filters and never invents an anchor for a finding whose screen cannot be located.
 - Clicking a finding marker opens its description on the canvas without navigating away. Opening a second marker closes the first; hiding Problems, changing screen/version, or collapsing the card leaves list state and numbering synchronized.
+- A correction version lists the findings it actually resolves in `resolvedFindingIds`. Resolved markers and cards are absent on that version, remain visible on the baseline, and appear only on the unresolved side of Compare. Merely linking a proposal with `findingIds` does not prove resolution.
 - Finding markers use the scrollable canvas as their containing block, resolve collisions independently for each rendered device, and are remeasured after zoom, canvas/device scroll, resize, version change, and panel layout change. A marker's relative offset from its anchor must remain stable.
 - Holding the middle mouse button and dragging pans the entire canvas in both axes where overflow exists. Prevent browser autoscroll, show a grabbing cursor while active, and release capture on pointer up/cancel without activating product controls.
 - Large reviews default to all screens but may be scoped to the current screen. The scope and exact counts must travel in diagnostics and AI handoff payloads.
@@ -89,6 +90,6 @@ Before delivery:
 5. Verify the agent handoff uses an absolute review-directory path, prepares only a prompt/job, clearly asks the user to send it, requires no server or open port, and leaves source modification blocked. Verify `Скопировать запрос`, `Обновить макет`, and the JSON fallback independently; test native adapters separately.
 6. Verify Summary/Problems/Changes isolation, contextual primary-action progression, source/screen filters, bulk selection, named run history, expert-result import, revision/project rejection, and active proposal comparison.
 7. Verify compact-width panel mutual exclusion, every right-panel tab, every view/tool combination, panel resizing/collapse, menu dismissal, zoom, tree search, and version approval.
-8. Verify Problems state plus the Before/Compare/After group, stable strip geometry, direct-link state normalization, marker/list number parity, collision-free marker layout and anchoring after zoom/scroll/resize, single-popover behavior, and collapse back to a marker.
+8. Verify Problems state, active-version selection, dedicated Compare version pairing/layout, direct-link state normalization, marker/list number parity, per-version resolution, collision-free marker layout and anchoring after zoom/scroll/resize, single-popover behavior, and collapse back to a marker.
 9. Verify middle-button canvas pan, pointer release/cancel, marker click isolation, RU/EN switching, locale persistence, and that product/user content remains untranslated.
 10. Reject the shell if understanding the primary controls depends on permanent help copy.
