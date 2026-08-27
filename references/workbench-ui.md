@@ -6,7 +6,7 @@ Use this reference when generating the review workbench shell itself. It governs
 
 Give each persistent region one job:
 
-- a narrow left rail switches Screens, Properties, Review, and Comments, exposes compact File and language icon menus, controls right-panel visibility, and remains available when panels collapse;
+- a narrow left rail starts with the conventional File/menu trigger, then switches Screens, Properties, Review, and Comments, exposes the language icon menu, controls right-panel visibility, and remains available when panels collapse;
 - the left panel contains project/screen navigation, hierarchy, search, and low-priority coverage metadata;
 - one compact document bar contains product identity, current screen path, and the single active version used by ordinary views; document actions and locale selection stay in the rail instead of consuming canvas width;
 - the canvas owns screen previews and comparisons;

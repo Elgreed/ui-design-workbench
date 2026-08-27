@@ -356,6 +356,12 @@ async function main() {
           && Boolean(document.querySelector('.workbench-rail .rail-menu .export-feedback'));
         const fileRailMenu = document.querySelector('.workbench-rail .rail-menu:not(.language-menu)');
         const languageRailMenu = document.querySelector('.workbench-rail .rail-menu.language-menu');
+        const fileRailSummaryRect = fileRailMenu?.querySelector('summary')?.getBoundingClientRect();
+        const fileRailIconRect = fileRailMenu?.querySelector('summary .icon')?.getBoundingClientRect();
+        const railFileGeometryWorks = Boolean(fileRailMenu && fileRailSummaryRect && fileRailIconRect
+          && document.querySelector('.workbench-rail')?.firstElementChild === fileRailMenu
+          && Math.abs((fileRailSummaryRect.left + fileRailSummaryRect.right - fileRailIconRect.left - fileRailIconRect.right) / 2) <= .5
+          && Math.abs((fileRailSummaryRect.top + fileRailSummaryRect.bottom - fileRailIconRect.top - fileRailIconRect.bottom) / 2) <= .5);
         fileRailMenu?.querySelector('summary')?.click();
         await new Promise(resolve => requestAnimationFrame(resolve));
         const fileRailMenuOpens = fileRailMenu?.open === true;
@@ -495,6 +501,7 @@ async function main() {
           markersFollowComparedViews,
           railCommandsWork,
           railMenusWork,
+          railFileGeometryWorks,
           markersToggleWork: markersHide && markersRestore,
           versionArchitectureWorks,
           markerTracksZoom,
@@ -540,7 +547,7 @@ async function main() {
       || !workflow.contextProposalAction || !workflow.importWorks || !workflow.compareVariantsWork || !workflow.reviewSectionsWork
       || !workflow.layerControlsWork || !workflow.markerNumberMatches || !workflow.markerPopoverOpens
       || !workflow.markerPopoverCollapses || !workflow.commentPopoverOpens || !workflow.commentPopoverCollapses
-      || !workflow.userCommentHasDistinctColor || !workflow.markersFollowComparedViews || !workflow.railCommandsWork || !workflow.railMenusWork
+      || !workflow.userCommentHasDistinctColor || !workflow.markersFollowComparedViews || !workflow.railCommandsWork || !workflow.railMenusWork || !workflow.railFileGeometryWorks
       || !workflow.markersToggleWork || !workflow.versionArchitectureWorks
       || !workflow.markerTracksZoom || !workflow.markerLayoutStable || !workflow.markerLeaderWorks || !workflow.middleMousePanWorks || !workflow.localeSwitchWorks
       || workflow.selected !== 1 || workflow.requestFindings !== 1 || !workflow.runtimeActionable
