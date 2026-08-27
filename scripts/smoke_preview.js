@@ -311,12 +311,16 @@ async function main() {
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const markerLeaderWorks = leadersHiddenByDefault && leaderRevealsForOpenCard;
         setWorkbenchLocale('en', { remember: false, updateLocation: false });
+        const englishVersionLabels = [...document.querySelectorAll('[data-version-visibility]')].map(button => button.textContent.trim());
         const englishLocaleWorks = document.documentElement.lang === 'en'
           && document.querySelector('.canvas-tools')?.getAttribute('aria-label') === 'Canvas tools'
-          && document.querySelector('[data-version-visibility="both"]')?.getAttribute('title') === 'Show both versions';
+          && document.querySelector('[data-version-visibility="both"]')?.getAttribute('title') === 'Show both versions'
+          && JSON.stringify(englishVersionLabels) === JSON.stringify(['Before', 'Compare', 'After']);
         setWorkbenchLocale('ru', { remember: false, updateLocation: false });
+        const russianVersionLabels = [...document.querySelectorAll('[data-version-visibility]')].map(button => button.textContent.trim());
         const russianLocaleRestores = document.documentElement.lang === 'ru'
-          && document.querySelector('.canvas-tools')?.getAttribute('aria-label') === 'Инструменты холста';
+          && document.querySelector('.canvas-tools')?.getAttribute('aria-label') === 'Инструменты холста'
+          && JSON.stringify(russianVersionLabels) === JSON.stringify(['До', 'Сравнение', 'После']);
         for (const id of Object.keys(state.findingDecisions)) state.findingDecisions[id] = 'pending';
         state.findingDecisions[smokeFinding.id] = 'accepted';
         renderFindings();

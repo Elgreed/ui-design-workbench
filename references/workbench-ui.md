@@ -51,7 +51,7 @@ Official pattern references:
 - Base dense desktop controls on a 28–32 px visual box while preserving at least a 24×24 CSS px WCAG target and larger targets where space permits.
 - Use stable typography roles: 13 px panel/page title, 10–11 px primary control/body text, 8–9 px metadata. Never shrink essential task text merely to fit a panel.
 - Equivalent segmented controls must share height, padding, baseline, icon box, and selected-state geometry.
-- Localize workbench chrome at runtime with native-language choices (`Русский`, `English`) and persist the locale in local storage plus `?lang=`. Never translate the reconstructed product, screen names, findings, comments, or evidence.
+- Localize every built-in workbench label, accessible name, tooltip, empty state, and toast at runtime with native-language choices (`Русский`, `English`) and persist the locale in local storage plus `?lang=`. Stable internal values may remain English. Never translate the reconstructed product, screen names, version names, findings, comments, or evidence.
 
 ## Adaptive behavior
 
@@ -71,7 +71,7 @@ Official pattern references:
 - The current screen and hovered navigation destination use distinct colors.
 - Design approval and source implementation are separate phases with separate actions.
 - Compare mode allows any two retained review versions, not only baseline versus latest, while preserving the immutable baseline.
-- `Before / Compare / After` is a three-state segmented visibility control: Before and After show one version without changing the surrounding tool geometry; Compare shows both and enables Split/Overlay. The active proposal is chosen in the Changes workflow; the canvas strip controls visibility only.
+- `Before / Compare / After` is a three-state segmented visibility control: Before and After show one version without changing the surrounding tool geometry; Compare shows both and enables Split/Overlay. Localize its visible labels (`До / Сравнение / После` in Russian) while keeping stable internal values. The active proposal is chosen in the Changes workflow; the canvas strip controls visibility only.
 - `Problems` is a visibility layer, not a separate review mode. Its marker set follows the current severity/source/screen/focused-block filters and never invents an anchor for a finding whose screen cannot be located.
 - Clicking a finding marker opens its description on the canvas without navigating away. Opening a second marker closes the first; hiding Problems, changing screen/version, or collapsing the card leaves list state and numbering synchronized.
 - Finding markers use the scrollable canvas as their containing block, resolve collisions independently for each rendered device, and are remeasured after zoom, canvas/device scroll, resize, version change, and panel layout change. A marker's relative offset from its anchor must remain stable.
