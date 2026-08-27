@@ -11,7 +11,7 @@ Give each persistent region one job:
 - one compact document bar contains product identity, application menus, current screen path, active version, and current mode status;
 - the canvas owns screen previews and comparisons;
 - a floating canvas palette switches view and interaction tools;
-- one compact canvas-visibility strip independently toggles `Problems`, `Before`, and `After`; comparison layout controls appear only while both versions are visible;
+- one compact canvas strip independently toggles `Problems`, then uses one stable `Before / Compare / After` segmented group for version visibility; comparison-layout controls keep their space and become enabled only in Compare so the strip never jumps;
 - a small bottom-right cluster owns zoom only;
 - the right panel is contextual and tabbed into `Properties`, `Review`, and `Comments` rather than stacking all three workflows.
 
@@ -51,6 +51,7 @@ Official pattern references:
 - Base dense desktop controls on a 28–32 px visual box while preserving at least a 24×24 CSS px WCAG target and larger targets where space permits.
 - Use stable typography roles: 13 px panel/page title, 10–11 px primary control/body text, 8–9 px metadata. Never shrink essential task text merely to fit a panel.
 - Equivalent segmented controls must share height, padding, baseline, icon box, and selected-state geometry.
+- Localize workbench chrome at runtime with native-language choices (`Русский`, `English`) and persist the locale in local storage plus `?lang=`. Never translate the reconstructed product, screen names, findings, comments, or evidence.
 
 ## Adaptive behavior
 
@@ -70,9 +71,11 @@ Official pattern references:
 - The current screen and hovered navigation destination use distinct colors.
 - Design approval and source implementation are separate phases with separate actions.
 - Compare mode allows any two retained review versions, not only baseline versus latest, while preserving the immutable baseline.
-- `Before` and `After` are toggle buttons, not a mode selector: either may be shown alone, both activate comparison, and at least one must remain visible. The active proposal is chosen in the Changes workflow; the canvas strip controls visibility only.
+- `Before / Compare / After` is a three-state segmented visibility control: Before and After show one version without changing the surrounding tool geometry; Compare shows both and enables Split/Overlay. The active proposal is chosen in the Changes workflow; the canvas strip controls visibility only.
 - `Problems` is a visibility layer, not a separate review mode. Its marker set follows the current severity/source/screen/focused-block filters and never invents an anchor for a finding whose screen cannot be located.
 - Clicking a finding marker opens its description on the canvas without navigating away. Opening a second marker closes the first; hiding Problems, changing screen/version, or collapsing the card leaves list state and numbering synchronized.
+- Finding markers use the scrollable canvas as their containing block and are remeasured after zoom, canvas/device scroll, resize, version change, and panel layout change. A marker's relative offset from its anchor must remain stable.
+- Holding the middle mouse button and dragging pans the entire canvas in both axes where overflow exists. Prevent browser autoscroll, show a grabbing cursor while active, and release capture on pointer up/cancel without activating product controls.
 - Large reviews default to all screens but may be scoped to the current screen. The scope and exact counts must travel in diagnostics and AI handoff payloads.
 
 ## Production acceptance gate
@@ -86,5 +89,6 @@ Before delivery:
 5. Verify the agent handoff uses an absolute review-directory path, prepares only a prompt/job, clearly asks the user to send it, requires no server or open port, and leaves source modification blocked. Verify `Скопировать запрос`, `Обновить макет`, and the JSON fallback independently; test native adapters separately.
 6. Verify Summary/Problems/Changes isolation, contextual primary-action progression, source/screen filters, bulk selection, named run history, expert-result import, revision/project rejection, and active proposal comparison.
 7. Verify compact-width panel mutual exclusion, every right-panel tab, every view/tool combination, panel resizing/collapse, menu dismissal, zoom, tree search, and version approval.
-8. Verify Problems/Before/After toggle state, at-least-one-version protection, marker/list number parity, marker anchoring after zoom/scroll/resize, single-popover behavior, and collapse back to a marker.
-9. Reject the shell if understanding the primary controls depends on permanent help copy.
+8. Verify Problems state plus the Before/Compare/After group, stable strip geometry, direct-link state normalization, marker/list number parity, marker anchoring after zoom/scroll/resize, single-popover behavior, and collapse back to a marker.
+9. Verify middle-button canvas pan, pointer release/cancel, marker click isolation, RU/EN switching, locale persistence, and that product/user content remains untranslated.
+10. Reject the shell if understanding the primary controls depends on permanent help copy.

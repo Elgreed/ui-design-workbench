@@ -102,6 +102,7 @@ async function main() {
   const activePort = path.join(profile, 'DevToolsActivePort');
   const url = pathToFileURL(input);
   url.searchParams.set('diagnostics', 'run');
+  url.searchParams.set('lang', 'ru');
   const browser = spawn(findChrome(), [
     '--headless=new',
     '--disable-gpu',
@@ -238,8 +239,7 @@ async function main() {
         const compareVariantsWork = document.querySelectorAll('.compare-panel').length === 2
           && document.querySelector('.version-select')?.hidden === true
           && !document.querySelector('.compare-version-select')
-          && document.querySelector('[data-canvas-layer="before"]')?.getAttribute('aria-pressed') === 'true'
-          && document.querySelector('[data-canvas-layer="after"]')?.getAttribute('aria-pressed') === 'true';
+          && document.querySelector('[data-version-visibility="both"]')?.getAttribute('aria-pressed') === 'true';
         const smokeMarker = document.querySelector('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]');
         const smokeListNumber = document.querySelector('.finding-card[data-finding-id="' + CSS.escape(smokeFinding.id) + '"] .finding-list-index')?.textContent?.trim();
         const markerNumberMatches = Boolean(smokeMarker && smokeMarker.textContent.trim() === smokeListNumber);
@@ -259,13 +259,39 @@ async function main() {
         await new Promise(resolve => requestAnimationFrame(resolve));
         const markersRestore = Boolean(document.querySelector('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]'))
           && findingsToggle?.getAttribute('aria-pressed') === 'true';
-        const beforeToggle = document.querySelector('[data-canvas-layer="before"]');
-        beforeToggle?.click();
+        setVersionVisibility('after');
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const afterOnlyWorks = !state.showBefore && state.showAfter && state.view !== 'compare';
-        beforeToggle?.click();
+        setVersionVisibility('both');
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const beforeAfterToggleWorks = afterOnlyWorks && state.showBefore && state.showAfter && state.view === 'compare';
+        const markerBeforeZoom = document.querySelector('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]')?.getBoundingClientRect();
+        const anchorBeforeZoom = document.querySelector('.device[data-screen-id="' + CSS.escape(smokeFinding.screenId) + '"] .device-content')?.getBoundingClientRect();
+        const markerOffsetBeforeZoom = markerBeforeZoom && anchorBeforeZoom ? {
+          x: markerBeforeZoom.left + markerBeforeZoom.width / 2 - anchorBeforeZoom.right,
+          y: markerBeforeZoom.top + markerBeforeZoom.height / 2 - (anchorBeforeZoom.top + Math.min(12, anchorBeforeZoom.height / 2)),
+        } : null;
+        setZoom(.8);
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const zoomedMarker = document.querySelector('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]');
+        const zoomedAnchor = document.querySelector('.device[data-screen-id="' + CSS.escape(smokeFinding.screenId) + '"] .device-content');
+        const markerRect = zoomedMarker?.getBoundingClientRect();
+        const anchorRect = zoomedAnchor?.getBoundingClientRect();
+        const markerOffsetAfterZoom = markerRect && anchorRect ? {
+          x: markerRect.left + markerRect.width / 2 - anchorRect.right,
+          y: markerRect.top + markerRect.height / 2 - (anchorRect.top + Math.min(12, anchorRect.height / 2)),
+        } : null;
+        const markerTracksZoom = Boolean(markerOffsetBeforeZoom && markerOffsetAfterZoom
+          && Math.abs(markerOffsetBeforeZoom.x - markerOffsetAfterZoom.x) <= 2
+          && Math.abs(markerOffsetBeforeZoom.y - markerOffsetAfterZoom.y) <= 2);
+        const markerTrackMetrics = { before: markerOffsetBeforeZoom, after: markerOffsetAfterZoom };
+        setWorkbenchLocale('en', { remember: false, updateLocation: false });
+        const englishLocaleWorks = document.documentElement.lang === 'en'
+          && document.querySelector('.canvas-tools')?.getAttribute('aria-label') === 'Canvas tools'
+          && document.querySelector('[data-version-visibility="both"]')?.getAttribute('title') === 'Show both versions';
+        setWorkbenchLocale('ru', { remember: false, updateLocation: false });
+        const russianLocaleRestores = document.documentElement.lang === 'ru'
+          && document.querySelector('.canvas-tools')?.getAttribute('aria-label') === 'Инструменты холста';
         for (const id of Object.keys(state.findingDecisions)) state.findingDecisions[id] = 'pending';
         state.findingDecisions[smokeFinding.id] = 'accepted';
         renderFindings();
@@ -285,6 +311,19 @@ async function main() {
         const selectionPreserved = !selectedNodeId || document.querySelector('[data-node-id="' + CSS.escape(selectedNodeId) + '"]')?.dataset.selected === 'true';
 
         setView('overview');
+        setZoom(2);
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const panStage = document.querySelector('.stage');
+        panStage.scrollLeft = 0;
+        panStage.scrollTop = 0;
+        panStage.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 77, button: 1, buttons: 4, clientX: 420, clientY: 360 }));
+        panStage.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 77, button: -1, buttons: 4, clientX: 350, clientY: 310 }));
+        const middlePanWorks = panStage.scrollLeft >= 60
+          && (panStage.scrollHeight <= panStage.clientHeight + 1 || panStage.scrollTop >= 40)
+          && panStage.classList.contains('canvas-panning');
+        const middlePanMetrics = { left: panStage.scrollLeft, top: panStage.scrollTop, scrollWidth: panStage.scrollWidth, scrollHeight: panStage.scrollHeight, clientWidth: panStage.clientWidth, clientHeight: panStage.clientHeight, active: panStage.classList.contains('canvas-panning') };
+        panStage.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 77, button: 1, buttons: 0, clientX: 350, clientY: 310 }));
+        const middlePanReleases = !panStage.classList.contains('canvas-panning');
         setZoom(1);
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const stage = document.querySelector('.stage');
@@ -354,12 +393,18 @@ async function main() {
           contextProposalAction,
           importWorks: Boolean(importWorks),
           compareVariantsWork,
-          layerControlsWork: document.querySelectorAll('[data-canvas-layer]').length === 3,
+          layerControlsWork: document.querySelectorAll('[data-canvas-layer]').length === 1
+            && document.querySelectorAll('[data-version-visibility]').length === 3,
           markerNumberMatches,
           markerPopoverOpens,
           markerPopoverCollapses,
           markersToggleWork: markersHide && markersRestore,
           beforeAfterToggleWorks,
+          markerTracksZoom,
+          markerTrackMetrics,
+          middleMousePanWorks: middlePanWorks && middlePanReleases,
+          middlePanMetrics,
+          localeSwitchWorks: englishLocaleWorks && russianLocaleRestores,
           reviewSectionsWork: ['summary', 'problems', 'changes'].every(section => Boolean(document.querySelector('[data-review-section="' + section + '"]'))),
           auditLinks: document.querySelectorAll('[data-audit-findings]').length,
           linkedVisible,
@@ -394,6 +439,7 @@ async function main() {
       || !workflow.contextProposalAction || !workflow.importWorks || !workflow.compareVariantsWork || !workflow.reviewSectionsWork
       || !workflow.layerControlsWork || !workflow.markerNumberMatches || !workflow.markerPopoverOpens
       || !workflow.markerPopoverCollapses || !workflow.markersToggleWork || !workflow.beforeAfterToggleWorks
+      || !workflow.markerTracksZoom || !workflow.middleMousePanWorks || !workflow.localeSwitchWorks
       || workflow.selected !== 1 || workflow.requestFindings !== 1 || !workflow.runtimeActionable
       || !workflow.sourceBeforeApproval || !workflow.sourceAfterApproval
       || !workflow.sourceApprovalGuard || !workflow.revisionVisible
