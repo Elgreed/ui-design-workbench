@@ -24,12 +24,15 @@ UI Design Workbench — навык Codex для реконструкции, ге
 ## Поддерживаемые платформы
 
 - Android и Jetpack Compose;
+- Android TV, Compose for TV, Views и Leanback;
 - iOS, iPadOS, UIKit и SwiftUI;
+- macOS, SwiftUI, AppKit и Mac Catalyst;
+- Windows, WinUI 3, WPF и XAML;
 - Web-приложения;
 - React Native;
 - Flutter.
 
-Workbench использует соответствующую платформенную основу: Material для Android, Apple Human Interface Guidelines для платформ Apple, а для Web — семантический HTML, WCAG и паттерны ARIA APG. Если в проекте найдены собственные компоненты и дизайн-токены, они имеют приоритет.
+Workbench использует соответствующую платформенную основу: Material для Android, TV-специфичные компоненты Material и D-pad focus-паттерны для Android TV, Apple Human Interface Guidelines для iOS и macOS, Fluent и рекомендации Windows по взаимодействию для Windows, а для Web — семантический HTML, WCAG и паттерны ARIA APG. Если в проекте найдены собственные компоненты и дизайн-токены, они имеют приоритет.
 
 ## Основные возможности
 

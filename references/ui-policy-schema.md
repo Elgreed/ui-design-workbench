@@ -13,11 +13,38 @@ An optional `.codex/ui-policy.json` makes design choices repeatable across tasks
       "minimumTarget": 48,
       "adaptive": true
     },
+    "android-tv": {
+      "standardProfile": "android-tv",
+      "implementation": "compose-tv",
+      "minimumTarget": 48,
+      "primaryInput": "dpad",
+      "referenceViewport": {"width": 960, "height": 540},
+      "safeContentInsets": {"left": 48, "right": 48, "top": 27, "bottom": 27},
+      "requireVisibleFocus": true
+    },
     "ios": {
       "standardProfile": "apple-hig",
       "implementation": "swiftui",
       "minimumTarget": 44,
       "preferSystemComponents": true
+    },
+    "macos": {
+      "standardProfile": "macos-hig",
+      "implementation": "swiftui",
+      "minimumTarget": 28,
+      "documentedMinimumTarget": 20,
+      "preferSystemComponents": true,
+      "requireMenuCommands": true,
+      "resizableWindows": true
+    },
+    "windows": {
+      "standardProfile": "windows-fluent",
+      "implementation": "winui3",
+      "minimumTarget": 40,
+      "inputs": ["mouse", "keyboard", "touch", "pen"],
+      "requireVisibleFocus": true,
+      "requireHighContrast": true,
+      "resizableWindows": true
     },
     "web": {
       "standardProfile": "web-platform",

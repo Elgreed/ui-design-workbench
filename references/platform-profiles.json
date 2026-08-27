@@ -25,6 +25,50 @@
       "recommendedTouchTarget": {"width": 44, "height": 44},
       "requiredInteractionStates": ["default", "hover", "focus-visible", "active", "disabled"],
       "requirements": ["keyboard-complete", "focus-visible", "semantic-landmarks", "reflow-320-css-px"]
+    },
+    "windows-fluent": {
+      "family": "windows",
+      "label": "Windows · Fluent, WinUI and Windows accessibility",
+      "standardRefPrefixes": ["windows.", "winui.", "project."],
+      "minimumTarget": {"width": 40, "height": 40},
+      "requiredInteractionStates": ["default", "pointer-over", "pressed", "focused", "disabled"],
+      "requirements": ["keyboard-complete", "visible-focus", "narrator-uia", "text-scaling", "high-contrast", "resizable-window", "multi-input"],
+      "referenceUrls": [
+        "https://learn.microsoft.com/windows/apps/design/",
+        "https://learn.microsoft.com/windows/apps/develop/input/guidelines-for-targeting",
+        "https://learn.microsoft.com/windows/apps/develop/input/keyboard-interactions",
+        "https://learn.microsoft.com/windows/apps/design/accessibility/"
+      ]
+    },
+    "macos-hig": {
+      "family": "macos",
+      "label": "macOS · Apple HIG",
+      "standardRefPrefixes": ["macos.", "apple.", "project."],
+      "minimumTarget": {"width": 28, "height": 28},
+      "documentedMinimumTarget": {"width": 20, "height": 20},
+      "requiredInteractionStates": ["default", "pressed", "focused", "disabled", "inactive-window"],
+      "requirements": ["menu-bar-commands", "keyboard-shortcuts", "full-keyboard-access", "voiceover", "resizable-window", "active-inactive-window", "reduced-motion", "increase-contrast"],
+      "referenceUrls": [
+        "https://developer.apple.com/design/human-interface-guidelines/designing-for-macos/",
+        "https://developer.apple.com/design/human-interface-guidelines/accessibility",
+        "https://developer.apple.com/design/human-interface-guidelines/focus-and-selection/"
+      ]
+    },
+    "android-tv": {
+      "family": "android-tv",
+      "label": "Android TV · TV Material and D-pad navigation",
+      "standardRefPrefixes": ["androidtv.", "tv-material.", "project."],
+      "minimumTarget": {"width": 48, "height": 48},
+      "referenceViewport": {"width": 960, "height": 540, "aspectRatio": "16:9"},
+      "safeContentInsets": {"left": 48, "right": 48, "top": 27, "bottom": 27},
+      "requiredInteractionStates": ["default", "focused", "pressed", "selected", "disabled"],
+      "requirements": ["dpad-complete", "single-visible-focus", "focus-restoration", "focus-driven-scrolling", "remote-select", "back-to-root", "ten-foot-readable", "overscan-safe-content", "no-touch-only-actions"],
+      "referenceUrls": [
+        "https://developer.android.com/design/ui/tv/guides/styles/focus-system",
+        "https://developer.android.com/design/ui/tv/guides/styles/layouts",
+        "https://developer.android.com/training/tv/get-started/navigation",
+        "https://developer.android.com/training/tv/playback/compose"
+      ]
     }
   },
   "frameworkAdapters": {
@@ -34,7 +78,18 @@
     "uikit": {"families": ["ios"], "profiles": ["apple-hig"]},
     "web": {"families": ["web"], "profiles": ["web-platform"]},
     "react-web": {"families": ["web"], "profiles": ["web-platform"]},
+    "windows-winui": {"families": ["windows"], "profiles": ["windows-fluent"]},
+    "windows-wpf": {"families": ["windows"], "profiles": ["windows-fluent"]},
+    "windows-xaml": {"families": ["windows"], "profiles": ["windows-fluent"]},
+    "swiftui-macos": {"families": ["macos"], "profiles": ["macos-hig"]},
+    "appkit": {"families": ["macos"], "profiles": ["macos-hig"]},
+    "mac-catalyst": {"families": ["macos"], "profiles": ["macos-hig"]},
+    "android-tv-compose": {"families": ["android-tv"], "profiles": ["android-tv"]},
+    "android-tv-views": {"families": ["android-tv"], "profiles": ["android-tv"]},
+    "android-tv-leanback": {"families": ["android-tv"], "profiles": ["android-tv"]},
     "flutter": {"families": ["android", "ios"], "profiles": ["material3", "apple-hig"], "requiresExplicitTarget": true},
-    "react-native": {"families": ["android", "ios"], "profiles": ["material3", "apple-hig"], "requiresExplicitTarget": true}
+    "react-native": {"families": ["android", "ios"], "profiles": ["material3", "apple-hig"], "requiresExplicitTarget": true},
+    "react-native-windows": {"families": ["windows"], "profiles": ["windows-fluent"]},
+    "react-native-macos": {"families": ["macos"], "profiles": ["macos-hig"]}
   }
 }

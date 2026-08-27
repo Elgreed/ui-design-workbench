@@ -21,7 +21,8 @@ def validate_profiles(ir: dict[str, Any]) -> dict[str, Any]:
     resolved: dict[str, Any] = {}
 
     if not families:
-        issues.append({"code": "target-platform-missing", "severity": "error", "message": "design.targetPlatforms must resolve to android, ios, or web."})
+        supported = ", ".join(sorted({str(item.get("family")) for item in profiles.values() if isinstance(item, dict) and item.get("family")}))
+        issues.append({"code": "target-platform-missing", "severity": "error", "message": f"design.targetPlatforms must resolve to a supported family: {supported}."})
 
     for adapter_id in sorted(framework_adapters(ir)):
         adapter = adapters[adapter_id]

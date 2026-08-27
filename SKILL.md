@@ -1,6 +1,6 @@
 ---
 name: ui-design-workbench
-description: Reconstruct repository UI, perform evidence-based UI/UX audits with corrected Before/After proposals, generate new interfaces, or redesign existing screens as standards-aware interactive HTML previews without running the app or changing source files. Use for UI review and design work across Android, iOS, Web, React Native, and Flutter; do not use when the user wants to execute or test the real application.
+description: Reconstruct repository UI, perform evidence-based UI/UX audits with corrected Before/After proposals, generate new interfaces, or redesign existing screens as standards-aware interactive HTML previews without running the app or changing source files. Use for UI review and design work across Android, Android TV, iOS, iPadOS, macOS, Windows, Web, React Native, and Flutter; do not use when the user wants to execute or test the real application.
 ---
 
 # UI Design Workbench
@@ -42,7 +42,7 @@ When the user asks for a UI/UX review, audit, critique, simplification, or "what
 - Do not use browser-default visual styling for project controls. Map project tokens, typography, assets, layout semantics, and component variants explicitly.
 - Do not add fallback colors, padding, radii, borders, shadows, device chrome, or typography to make an incomplete translation look polished. Missing evidence must remain unresolved.
 - In generation and redesign, use the restrained platform baseline first. A visual or behavioral choice without project evidence, a platform reference, a user requirement, or a recorded decision is invalid.
-- For Android default to the project's Material system, normally Material 3; for iOS/iPadOS default to Apple-native HIG patterns; for Web default to semantic HTML, WCAG 2.2 AA, and APG keyboard behavior for custom widgets. Do not mix platform idioms without an explicit reason.
+- For Android mobile/tablet default to the project's Material system, normally Material 3; for Android TV use TV Material and D-pad-first focus/navigation; for iOS/iPadOS use Apple-native HIG patterns; for macOS use Mac windows, menus, commands, toolbars, keyboard/pointer workflows, and HIG; for Windows use the installed WinUI/WPF stack with Fluent, keyboard, Narrator, high-contrast, scaling, and resizable-window behavior; for Web use semantic HTML, WCAG 2.2 AA, and APG keyboard behavior for custom widgets. Do not mix platform idioms without an explicit reason.
 - Do not silently upgrade dependencies, adopt experimental UI APIs, or emulate unavailable system materials.
 - Use the exact content viewport from the target platform. A decorative device frame is off by default and must never reduce the content dimensions.
 - Reuse repository SVG, raster assets, and font files when licensing and local paths allow. Record missing or remote assets as unresolved instead of inventing replacements.
@@ -78,6 +78,7 @@ This command applies to reconstruction and redesign with an existing repository.
 - Confirm the fidelity audit reports at least 80% source mapping and no untranslated placeholders.
 - For generation/redesign, confirm at least 90% evidence coverage and 100% standards, semantics, target-size, state-matrix, and resolvable WCAG text-contrast coverage.
 - Confirm the design mode, primary task, target platforms, installed framework constraints, and standard profiles are explicit.
+- For Windows, confirm mouse/touch/pen/keyboard inputs, access keys/accelerators, visible focus, Narrator/UI Automation, text/display scaling, high contrast, activation, title-bar insets, and window resizing. For macOS, confirm menu-bar commands, shortcuts, pointer and keyboard workflows, Full Keyboard Access, VoiceOver, active/inactive and resizable/multiwindow states. For Android TV, confirm initial and restored focus, a single visible focused element, complete D-pad reachability, Select/Back, focus-driven scrolling, 16:9 layout, ten-foot readability, and overscan-safe primary content.
 - Check relevant default/loading/empty/error/offline/permission/disabled/success/destructive states, recording justified non-applicable states.
 - Confirm screen and route coverage are 100%, accounting for explicitly reasoned exclusions.
 - Confirm logical-view and navigation-target coverage are 100%; in Prototype, every visible sidebar or tab destination must be reachable.

@@ -111,6 +111,21 @@ Use JSON with `version: 1`. The renderer tolerates omitted optional fields but e
 
 Versioned proposals, expert-audit findings, and annotations live under `review`; base `nodes` remain the `Before` snapshot. Read [review-workflow.md](review-workflow.md) for the schema and approval lifecycle and [ui-reviewer.md](ui-reviewer.md) for finding quality and severity rules.
 
+## Platform families and profiles
+
+`design.targetPlatforms` uses platform families rather than framework names. Supported families and their default machine-readable profiles are:
+
+| Platform family | Default profile | Common scanner adapters | Standard-reference prefix |
+| --- | --- | --- | --- |
+| `android` | `material3` | `android-compose`, `android-views` | `material3.` |
+| `android-tv` | `android-tv` | `android-tv-compose`, `android-tv-views`, `android-tv-leanback` | `androidtv.` |
+| `ios` | `apple-hig` | `swiftui`, `uikit` | `apple.` |
+| `macos` | `macos-hig` | `swiftui-macos`, `appkit`, `mac-catalyst` | `macos.` |
+| `windows` | `windows-fluent` | `windows-winui`, `windows-wpf`, `windows-xaml` | `windows.` |
+| `web` | `web-platform` | `web`, `react-web` | `web.` |
+
+Flutter and React Native adapters resolve to explicit target families; never infer one shared visual profile for all outputs. A TV screen uses a 16:9 reference viewport (`960×540` dp at mdpi) and records safe-content insets. Desktop screens record a resizable window viewport, not a fixed device frame. Use `standardRef` on every generated or redesigned control, for example `androidtv.Card`, `macos.Toolbar`, or `windows.NavigationView`.
+
 An optional generated interaction plan lives at `review.scenarioPlan` and follows the output of `scripts/generate_interaction_matrix.py`. It is a bounded test plan, not an executed result. Store observations and `pass`/`fail` outcomes only in `review.audit.interactionChecks`. Machine-readable platform profile IDs and constraints come from [platform-profiles.json](platform-profiles.json); final quality artifacts follow [quality-automation.md](quality-automation.md).
 
 ## Runtime diagnostics

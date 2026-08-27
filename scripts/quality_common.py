@@ -31,6 +31,12 @@ def profile_catalog() -> dict[str, Any]:
 
 def platform_family(value: Any) -> str | None:
     platform = str(value or "").strip().lower()
+    if platform in {"android-tv", "android-tv-compose", "android-tv-views", "android-tv-leanback", "compose-tv", "leanback"} or "android-tv" in platform:
+        return "android-tv"
+    if platform in {"windows", "windows-winui", "windows-wpf", "windows-xaml", "winui", "winui3", "wpf", "windows-app-sdk", "react-native-windows"} or platform.startswith("windows-"):
+        return "windows"
+    if platform in {"macos", "swiftui-macos", "appkit", "mac-catalyst", "react-native-macos"} or "macos" in platform:
+        return "macos"
     if "android" in platform:
         return "android"
     if platform in {"ios", "ipados", "swiftui", "uikit"} or "apple" in platform:

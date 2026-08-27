@@ -24,12 +24,15 @@ Use it to:
 ## Supported platforms
 
 - Android and Jetpack Compose;
+- Android TV, Compose for TV, Views, and Leanback;
 - iOS, iPadOS, UIKit, and SwiftUI;
+- macOS, SwiftUI, AppKit, and Mac Catalyst;
+- Windows, WinUI 3, WPF, and XAML;
 - Web applications;
 - React Native;
 - Flutter.
 
-The workbench applies the matching platform baseline: Material for Android, Apple Human Interface Guidelines for Apple platforms, and semantic HTML, WCAG, and ARIA APG patterns for the Web. Project components and design tokens take priority when source evidence is available.
+The workbench applies the matching platform baseline: Material for Android, TV-specific Material and D-pad focus patterns for Android TV, Apple Human Interface Guidelines for iOS and macOS, Fluent and Windows interaction guidance for Windows, and semantic HTML, WCAG, and ARIA APG patterns for the Web. Project components and design tokens take priority when source evidence is available.
 
 ## Main capabilities
 

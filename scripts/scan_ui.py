@@ -26,10 +26,11 @@ SOURCE_EXTENSIONS = {
     ".kt", ".kts", ".xml", ".swift", ".storyboard", ".xib", ".dart",
     ".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".html",
     ".css", ".scss", ".sass", ".less", ".json", ".yaml", ".yml", ".go",
+    ".cs", ".xaml", ".csproj", ".m", ".mm", ".cpp", ".h", ".hpp",
 }
 ASSET_EXTENSIONS = {
     ".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".avif",
-    ".ttf", ".otf", ".woff", ".woff2", ".pdf",
+    ".ttf", ".otf", ".woff", ".woff2", ".pdf", ".ico", ".icns",
 }
 MAX_FILE_BYTES = 1_500_000
 
@@ -65,27 +66,64 @@ def read_text(path: Path) -> str | None:
 def detect_platforms(path: Path, text: str) -> list[str]:
     suffix = path.suffix.lower()
     normalized = path.as_posix().lower()
+    lower = text.lower()
     found: list[str] = []
+    android_tv = any(marker in lower for marker in (
+        "androidx.tv.", "androidx.leanback.", "android.software.leanback",
+        "leanback_launcher", "tv-material", "compose for tv",
+    ))
+    android_tv_leanback = "androidx.leanback." in lower or "browsesupportfragment" in lower
     if suffix in {".kt", ".kts"}:
-        if "@composable" in text.lower() or "androidx.compose" in text:
-            found.append("android-compose")
-        if re.search(r"\b(Activity|Fragment|RecyclerView|ViewBinding)\b", text):
-            found.append("android-views")
+        if "@composable" in lower or "androidx.compose" in text:
+            found.append("android-tv-compose" if android_tv else "android-compose")
+        if re.search(r"\b(Activity|Fragment|RecyclerView|ViewBinding|BrowseSupportFragment)\b", text):
+            found.append("android-tv-leanback" if android_tv_leanback else "android-tv-views" if android_tv else "android-views")
     if suffix == ".xml" and "/res/" in f"/{normalized}":
-        if any(segment in normalized for segment in ("/layout", "/navigation", "/values")):
+        if android_tv:
+            found.append("android-tv-views")
+        elif any(segment in normalized for segment in ("/layout", "/navigation", "/values")):
             found.append("android-views")
-    if suffix in {".swift", ".storyboard", ".xib"}:
-        if re.search(r"\b(struct|class)\s+\w+\s*:\s*View\b", text) or "import SwiftUI" in text:
-            found.append("swiftui")
-        if "UIViewController" in text or suffix in {".storyboard", ".xib"}:
+    if suffix == ".xml" and android_tv:
+        found.append("android-tv-views")
+    if suffix in {".swift", ".storyboard", ".xib", ".m", ".mm"}:
+        catalyst = any(marker in text for marker in ("targetEnvironment(macCatalyst)", ".macCatalyst"))
+        appkit = any(marker in text for marker in ("import AppKit", "NSApplication", "NSWindow", "NSViewController", "#import <Cocoa/Cocoa.h>", "NSWindowController")) or 'targetRuntime="MacOSX.Cocoa"' in text
+        macos = appkit or any(marker in text for marker in ("MenuBarExtra", "#if os(macOS)", ".macOS("))
+        swiftui = re.search(r"\b(struct|class)\s+\w+\s*:\s*View\b", text) or "import SwiftUI" in text
+        if catalyst:
+            found.append("mac-catalyst")
+        elif swiftui:
+            found.append("swiftui-macos" if macos else "swiftui")
+        if appkit:
+            found.append("appkit")
+        elif "UIViewController" in text or "import UIKit" in text or 'targetRuntime="iOS.CocoaTouch"' in text:
             found.append("uikit")
+    if suffix in {".cs", ".xaml", ".csproj", ".cpp", ".h", ".hpp"}:
+        winui = any(marker in text for marker in ("Microsoft.UI.Xaml", "Microsoft.WindowsAppSDK", "AppWindow", "<NavigationView", "<muxc:", "winrt::Microsoft::UI::Xaml"))
+        wpf = any(marker in text for marker in ("System.Windows", "UseWPF", "PresentationFramework"))
+        wpf = wpf or (not winui and suffix == ".xaml" and any(marker in text for marker in ("<Window", "<Application")))
+        if winui:
+            found.append("windows-winui")
+        if wpf:
+            found.append("windows-wpf")
+        if suffix == ".xaml" and not (winui or wpf) and any(marker in text for marker in ("x:Class=", "<Page", "<UserControl", "<ResourceDictionary")):
+            found.append("windows-xaml")
     if suffix == ".dart" and ("package:flutter" in text or "extends StatelessWidget" in text or "extends StatefulWidget" in text):
         found.append("flutter")
     if suffix in {".js", ".jsx", ".ts", ".tsx"}:
-        if "react-native" in text or "StyleSheet.create" in text:
+        if "react-native-windows" in lower:
+            found.append("react-native-windows")
+        elif "react-native-macos" in lower:
+            found.append("react-native-macos")
+        elif "react-native" in text or "StyleSheet.create" in text:
             found.append("react-native")
         elif re.search(r"\b(import|require).*react|<[A-Z][A-Za-z0-9_.]*", text):
             found.append("react-web")
+    if suffix == ".json" and path.name.lower() in {"package.json", "package-lock.json"}:
+        if "react-native-windows" in lower:
+            found.append("react-native-windows")
+        if "react-native-macos" in lower:
+            found.append("react-native-macos")
     if suffix in {".vue", ".svelte", ".html", ".css", ".scss", ".sass", ".less"}:
         found.append("web")
     if suffix == ".go" and re.search(r"\b(?:http\.(?:Handle|HandleFunc)|HandleFunc|ParseFS|ExecuteTemplate|ServeHTTP)\b", text):
@@ -104,7 +142,7 @@ def classify_role(path: Path, text: str) -> str:
         return "navigation"
     if any(word in name for word in ("theme", "token", "color", "typography", "style")) or "/res/values" in normalized:
         return "theme"
-    if any(word in name for word in ("screen", "page", "view", "activity", "fragment")) or "/res/layout" in normalized:
+    if any(word in name for word in ("screen", "page", "view", "activity", "fragment", "window", "dialog")) or "/res/layout" in normalized:
         return "screen"
     if any(word in name for word in ("component", "widget", "control")):
         return "component"
@@ -119,11 +157,49 @@ SYMBOL_RULES: dict[str, list[tuple[str, re.Pattern[str]]]] = {
     "android-views": [
         ("class", re.compile(r"\bclass\s+([A-Z]\w+)\s*(?::|extends)")),
     ],
+    "android-tv-compose": [
+        ("composable", re.compile(r"(?:@Composable\s+)?(?:public\s+|private\s+|internal\s+)?fun\s+([A-Z]\w+)\s*\(")),
+        ("component", re.compile(r"\b(?:LazyColumn|LazyRow|Carousel|ImmersiveList|Surface|Button|Card|Text|Image|Icon)\s*\(")),
+    ],
+    "android-tv-views": [
+        ("class", re.compile(r"\bclass\s+([A-Z]\w+)\s*(?::|extends)")),
+    ],
+    "android-tv-leanback": [
+        ("class", re.compile(r"\bclass\s+([A-Z]\w+)\s*(?::|extends)")),
+    ],
     "swiftui": [
         ("view", re.compile(r"\bstruct\s+([A-Z]\w+)\s*:\s*View\b")),
     ],
     "uikit": [
         ("view-controller", re.compile(r"\bclass\s+([A-Z]\w+)\s*:\s*UI\w*ViewController\b")),
+    ],
+    "swiftui-macos": [
+        ("view", re.compile(r"\bstruct\s+([A-Z]\w+)\s*:\s*View\b")),
+    ],
+    "appkit": [
+        ("view", re.compile(r"\bclass\s+([A-Z]\w+)\s*:\s*NS(?:View|Window)Controller\b")),
+        ("view", re.compile(r"@interface\s+([A-Z]\w+)\s*:\s*NS(?:View|Window)Controller\b")),
+    ],
+    "windows-winui": [
+        ("class", re.compile(r"\b(?:public\s+|internal\s+|partial\s+)*class\s+([A-Z]\w+)")),
+        ("view", re.compile(r"x:Class\s*=\s*[\"'][\w.]*\.?([A-Z]\w+)[\"']")),
+    ],
+    "windows-wpf": [
+        ("class", re.compile(r"\b(?:public\s+|internal\s+|partial\s+)*class\s+([A-Z]\w+)")),
+        ("view", re.compile(r"x:Class\s*=\s*[\"'][\w.]*\.?([A-Z]\w+)[\"']")),
+    ],
+    "windows-xaml": [
+        ("view", re.compile(r"x:Class\s*=\s*[\"'][\w.]*\.?([A-Z]\w+)[\"']")),
+    ],
+    "mac-catalyst": [
+        ("view", re.compile(r"\bstruct\s+([A-Z]\w+)\s*:\s*View\b")),
+        ("view-controller", re.compile(r"\bclass\s+([A-Z]\w+)\s*:\s*UI\w*ViewController\b")),
+    ],
+    "react-native-windows": [
+        ("component", re.compile(r"\b(?:function|class)\s+([A-Z]\w+)|\bconst\s+([A-Z]\w+)\s*=\s*(?:\([^)]*\)|\w+)\s*=>")),
+    ],
+    "react-native-macos": [
+        ("component", re.compile(r"\b(?:function|class)\s+([A-Z]\w+)|\bconst\s+([A-Z]\w+)\s*=\s*(?:\([^)]*\)|\w+)\s*=>")),
     ],
     "flutter": [
         ("widget", re.compile(r"\bclass\s+([A-Z]\w+)\s+extends\s+(?:StatelessWidget|StatefulWidget)\b")),
@@ -197,7 +273,7 @@ def extract_routes(text: str, source: str) -> list[dict[str, Any]]:
 
 def screen_candidates(source: str, path: Path, text: str, platforms: list[str], symbols: list[dict[str, Any]], role: str) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
-    screen_suffixes = ("Screen", "Page", "View", "Activity", "Fragment", "ViewController")
+    screen_suffixes = ("Screen", "Page", "View", "Activity", "Fragment", "ViewController", "Window", "WindowController", "Pane")
     for symbol in symbols:
         if symbol["name"].endswith(screen_suffixes) or role == "screen":
             candidates.append({
@@ -270,10 +346,11 @@ def extract_navigation_targets(text: str, source: str) -> list[dict[str, Any]]:
 def component_candidates(source: str, platforms: list[str], symbols: list[dict[str, Any]], role: str) -> list[dict[str, Any]]:
     """Return conservative project-component candidates for later source inspection."""
     candidates: list[dict[str, Any]] = []
-    screen_suffixes = ("Screen", "Page", "Activity", "Fragment", "ViewController")
+    screen_suffixes = ("Screen", "Page", "Activity", "Fragment", "ViewController", "Window", "WindowController", "Pane")
     primitive_names = {
         "Row", "Column", "Box", "LazyColumn", "LazyRow", "Scaffold", "Card",
         "Button", "Text", "Image", "Icon", "TextField",
+        "Carousel", "ImmersiveList", "Surface", "NavigationView",
     }
     component_kinds = {"composable", "component", "view", "widget", "class"}
     for symbol in symbols:
@@ -424,8 +501,14 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
     used_ids: set[str] = set()
 
     def target_family(platform: str) -> str | None:
+        if platform.startswith("android-tv"):
+            return "android-tv"
         if platform.startswith("android"):
             return "android"
+        if platform.startswith("windows") or platform == "react-native-windows":
+            return "windows"
+        if platform in {"swiftui-macos", "appkit", "mac-catalyst", "react-native-macos"}:
+            return "macos"
         if platform in {"swiftui", "uikit"}:
             return "ios"
         if platform in {"web", "react-web"}:
@@ -473,11 +556,26 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
         nodes[source_id] = {"type": "text", "text": f"{candidate.get('file', '')}:{candidate.get('line', 1)}", "style": {}, "source": source, "confidence": "exact"}
         nodes[inventory_id] = {"type": "custom", "text": "Codex should inspect this source file and replace this inventory placeholder with translated UI nodes.", "component": "UntranslatedSource", "source": source, "confidence": "unsupported"}
 
-    native = any(platform in {"android-compose", "android-views", "swiftui", "uikit", "flutter", "react-native"} for platform in scan_result.get("detectedPlatforms", []))
+    detected_platforms = scan_result.get("detectedPlatforms", [])
+    tv = any(platform.startswith("android-tv") for platform in detected_platforms)
+    handheld_native = any(platform in {"android-compose", "android-views", "swiftui", "uikit", "flutter", "react-native"} for platform in detected_platforms)
     target_platforms = list(dict.fromkeys(
         family for platform in scan_result.get("detectedPlatforms", [])
         if (family := target_family(platform))
     ))
+    default_profiles = {
+        "android": "material3",
+        "android-tv": "android-tv",
+        "ios": "apple-hig",
+        "macos": "macos-hig",
+        "windows": "windows-fluent",
+        "web": "web-platform",
+    }
+    standard_profiles = {
+        family: {"id": default_profiles[family], "source": "official-default"}
+        for family in target_platforms
+        if family in default_profiles
+    }
     tree_groups: dict[str, dict[str, list[dict[str, str]]]] = {}
     for screen in screens:
         platform_label = str(screen.get("platform") or "unknown")
@@ -506,7 +604,11 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
         "version": 1,
         "project": {"name": Path(scan_result["repoRoot"]).name, "root": scan_result["repoRoot"]},
         "platforms": scan_result.get("detectedPlatforms", []),
-        "design": {"mode": "reconstruct", "targetPlatforms": target_platforms},
+        "design": {
+            "mode": "reconstruct",
+            "targetPlatforms": target_platforms,
+            "standardProfiles": standard_profiles,
+        },
         "screenTree": screen_tree,
         "policyFile": scan_result.get("policyFile", ""),
         "discoveredScreens": [
@@ -523,7 +625,11 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
         ],
         "discoveredRoutes": scan_result.get("routes", []),
         "discoveredNavigationTargets": scan_result.get("navigationTargets", []),
-        "viewport": {"width": 390 if native else 1280, "height": 844 if native else 800, "device": "phone" if native else "desktop"},
+        "viewport": {
+            "width": 960 if tv else 390 if handheld_native else 1280,
+            "height": 540 if tv else 844 if handheld_native else 800,
+            "device": "tv" if tv else "phone" if handheld_native else "desktop",
+        },
         "fidelity": {"status": "inventory", "sourceDerived": False},
         "tokens": {"colors": {}, "spacing": {}, "radii": {}, "typography": {}},
         "componentCatalog": {
