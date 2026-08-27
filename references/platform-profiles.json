@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "profiles": {
+    "material3": {
+      "family": "android",
+      "label": "Android · Material 3",
+      "standardRefPrefixes": ["material3.", "project."],
+      "minimumTarget": {"width": 48, "height": 48},
+      "requiredInteractionStates": ["default", "pressed", "focused", "disabled"],
+      "requirements": ["system-back", "edge-to-edge-insets", "dynamic-color-aware", "scalable-type"]
+    },
+    "apple-hig": {
+      "family": "ios",
+      "label": "iOS/iPadOS · Apple HIG",
+      "standardRefPrefixes": ["apple.", "project."],
+      "minimumTarget": {"width": 44, "height": 44},
+      "requiredInteractionStates": ["default", "highlighted", "focused", "disabled"],
+      "requirements": ["safe-area-insets", "dynamic-type", "system-back", "reduced-motion"]
+    },
+    "web-platform": {
+      "family": "web",
+      "label": "Web · semantic HTML, WCAG 2.2 AA, APG",
+      "standardRefPrefixes": ["html.", "aria.", "project."],
+      "minimumTarget": {"width": 24, "height": 24},
+      "recommendedTouchTarget": {"width": 44, "height": 44},
+      "requiredInteractionStates": ["default", "hover", "focus-visible", "active", "disabled"],
+      "requirements": ["keyboard-complete", "focus-visible", "semantic-landmarks", "reflow-320-css-px"]
+    }
+  },
+  "frameworkAdapters": {
+    "android-compose": {"families": ["android"], "profiles": ["material3"]},
+    "android-views": {"families": ["android"], "profiles": ["material3"]},
+    "swiftui": {"families": ["ios"], "profiles": ["apple-hig"]},
+    "uikit": {"families": ["ios"], "profiles": ["apple-hig"]},
+    "web": {"families": ["web"], "profiles": ["web-platform"]},
+    "react-web": {"families": ["web"], "profiles": ["web-platform"]},
+    "flutter": {"families": ["android", "ios"], "profiles": ["material3", "apple-hig"], "requiresExplicitTarget": true},
+    "react-native": {"families": ["android", "ios"], "profiles": ["material3", "apple-hig"], "requiresExplicitTarget": true}
+  }
+}
