@@ -12,7 +12,8 @@ The repository UI remains the evidence source. The generated `ui-ir.json` is the
 - Incremental, content-fingerprinted project context that avoids repeated repository-wide scans and reduces model context usage.
 - Complete hierarchical screen tree with active-screen and navigation-target preview states.
 - All screens, Prototype, Single screen, and a dedicated Compare workspace with explicit left/right versions plus split or overlay layouts.
-- Stable shared-canvas zoom, middle-button drag panning, resizable/collapsible panels, inspect mode, anchored comments, and feedback export.
+- Stable shared-canvas zoom, middle-button drag panning, resizable/collapsible panels, inspect mode, and per-view finding/comment markers with separate colors and anchored popovers.
+- A compact command rail for Screens, Properties, Review, Comments, File actions, locale selection, and panel visibility.
 - Runtime Russian/English workbench localization that never translates reconstructed product content.
 - Evidence-based UI/UX review with deterministic interaction/geometry diagnostics and separate expert UX assessment.
 - Sparse correction proposals that preserve an immutable Before baseline.

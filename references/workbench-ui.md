@@ -6,14 +6,14 @@ Use this reference when generating the review workbench shell itself. It governs
 
 Give each persistent region one job:
 
-- a narrow left rail switches workbench areas and remains available when panels collapse;
+- a narrow left rail switches Screens, Properties, Review, and Comments, exposes compact File and language icon menus, controls right-panel visibility, and remains available when panels collapse;
 - the left panel contains project/screen navigation, hierarchy, search, and low-priority coverage metadata;
-- one compact document bar contains product identity, the minimal application menu, current screen path, and the single active version used by ordinary views;
+- one compact document bar contains product identity, current screen path, and the single active version used by ordinary views; document actions and locale selection stay in the rail instead of consuming canvas width;
 - the canvas owns screen previews and comparisons;
 - a floating canvas palette switches view and interaction tools and independently toggles `Problems`;
 - Compare is a dedicated view: its compact contextual bar selects the left and right versions and then the split/overlay layout. Do not mix version selection with view selection through a `Before / Compare / After` visibility group;
 - a small bottom-right cluster owns zoom only;
-- the right panel is contextual and shows only `Properties`, `Review`, or `Comments`. Review opens from the rail; Inspect and Comment tools open their matching areas, so a second persistent tab row is unnecessary.
+- the right panel is contextual and shows only `Properties`, `Review`, or `Comments`. Every area is directly reachable from the rail, while Inspect and Comment canvas tools also open their matching area; do not add a duplicate tab row inside the panel.
 
 Do not duplicate the same primary control in several persistent regions. Menu commands may repeat toolbar actions only as a conventional keyboard/menu fallback. Keep document actions, canvas tools, object properties, review decisions, and navigation visually distinct.
 
@@ -38,6 +38,7 @@ Official pattern references:
 - After the run, show the issue count and a secondary `Подготовить AI-ревью` handoff. It copies or downloads a provider-neutral job; an optional adapter may open a prepared native agent task, but it never submits the prompt. Keep a compact JSON-download action as the portable fallback, not a competing primary path.
 - Keep finding observation and actions visible; place impact, recommendation, and evidence in an expandable detail region.
 - Use the same stable number for each finding in the Problems list and on the canvas. Canvas markers remain circles until clicked, open one compact anchored card at a time, and expose an unambiguous top-right collapse control that restores the circle.
+- Render unresolved user comments on the canvas as numbered markers from a distinct, non-severity color family. They open and collapse like findings but remain a separate semantic layer and list.
 - Use short empty states that name the next direct action. Do not add tutorial paragraphs to compensate for ambiguous controls.
 - Split the Review tab into `Сводка`, `Проблемы`, and `Изменения`. Summary owns scope, coverage, history, and diagnostics; Problems owns audit evidence and selection; Changes owns the correction queue, imported proposals, and design approval. Do not vertically stack all three workflows.
 - Keep one sticky contextual primary action whose label advances with the state: run review, choose problems, create proposal, approve proposal, or prepare implementation. Secondary export/reject controls may remain adjacent but must not compete visually.
@@ -74,8 +75,9 @@ Official pattern references:
 - Compare mode allows any two retained review versions, not only baseline versus latest, while preserving the immutable baseline. Its left/right selectors and Split/Overlay controls appear only inside the dedicated Compare context and never duplicate the main view switcher.
 - `Problems` is a visibility layer, not a separate review mode. Its marker set follows the current severity/source/screen/focused-block filters and never invents an anchor for a finding whose screen cannot be located.
 - Clicking a finding marker opens its description on the canvas without navigating away. Opening a second marker closes the first; hiding Problems, changing screen/version, or collapsing the card leaves list state and numbering synchronized.
+- Place markers beside the device they annotate, not in one global right-hand stack. In Compare, markers for the left version use the outer left edge and markers for the right version use the outer right edge; in ordinary views choose the nearest device edge to the anchor. User-comment markers follow the same placement rule in their own color.
 - A correction version lists the findings it actually resolves in `resolvedFindingIds`. Resolved markers and cards are absent on that version, remain visible on the baseline, and appear only on the unresolved side of Compare. Merely linking a proposal with `findingIds` does not prove resolution.
-- Finding markers use the scrollable canvas as their containing block, resolve collisions independently for each rendered device, and are remeasured after zoom, canvas/device scroll, resize, version change, and panel layout change. A marker's relative offset from its anchor must remain stable.
+- Finding and comment markers use the scrollable canvas as their containing block, resolve collisions independently for each rendered device and side, and are remeasured after zoom, canvas/device scroll, resize, version change, and panel layout change. They must remain beside the owning device; leader lines preserve the exact node relationship when collision avoidance changes the vertical slot.
 - Holding the middle mouse button and dragging pans the entire canvas in both axes where overflow exists. Prevent browser autoscroll, show a grabbing cursor while active, and release capture on pointer up/cancel without activating product controls.
 - Large reviews default to all screens but may be scoped to the current screen. The scope and exact counts must travel in diagnostics and AI handoff payloads.
 
@@ -90,6 +92,6 @@ Before delivery:
 5. Verify the agent handoff uses an absolute review-directory path, prepares only a prompt/job, clearly asks the user to send it, requires no server or open port, and leaves source modification blocked. Verify `Скопировать запрос`, `Обновить макет`, and the JSON fallback independently; test native adapters separately.
 6. Verify Summary/Problems/Changes isolation, contextual primary-action progression, source/screen filters, bulk selection, named run history, expert-result import, revision/project rejection, and active proposal comparison.
 7. Verify compact-width panel mutual exclusion, every right-panel tab, every view/tool combination, panel resizing/collapse, menu dismissal, zoom, tree search, and version approval.
-8. Verify Problems state, active-version selection, dedicated Compare version pairing/layout, direct-link state normalization, marker/list number parity, per-version resolution, collision-free marker layout and anchoring after zoom/scroll/resize, single-popover behavior, and collapse back to a marker.
-9. Verify middle-button canvas pan, pointer release/cancel, marker click isolation, RU/EN switching, locale persistence, and that product/user content remains untranslated.
+8. Verify Problems state, active-version selection, dedicated Compare version pairing/layout, direct-link state normalization, marker/list number parity, per-version resolution, per-device-side placement, distinct user-comment markers, collision-free layout and anchoring after zoom/scroll/resize, single-popover behavior, and collapse back to a marker.
+9. Verify the restored rail commands, File and language icon menus, mutually exclusive menu dismissal, middle-button canvas pan, pointer release/cancel, marker click isolation, RU/EN switching, locale persistence, and that product/user content remains untranslated.
 10. Reject the shell if understanding the primary controls depends on permanent help copy.

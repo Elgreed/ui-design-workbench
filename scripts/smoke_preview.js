@@ -233,6 +233,12 @@ async function main() {
         state.findingSource = 'all';
         state.findingScreen = 'all';
         state.showFindings = true;
+        const smokeAnnotation = {
+          id: 'smoke-canvas-comment', screenId: screens[0].id, nodeId: null,
+          versionId: 'smoke-imported-proposal', text: 'Smoke user comment.', priority: 'medium', status: 'new'
+        };
+        state.annotations.push(smokeAnnotation);
+        renderQueue();
         renderCompareVersionOptions();
         setScreen(screens[0].id, 'compare');
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -241,6 +247,23 @@ async function main() {
           && document.querySelectorAll('.compare-version-select').length === 2
           && getComputedStyle(document.querySelector('.compare-workspace-controls')).display === 'flex';
         const smokeMarker = document.querySelector('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]');
+        const smokeCommentMarker = document.querySelector('[data-open-annotation="' + CSS.escape(smokeAnnotation.id) + '"]');
+        const baseDeviceRect = document.querySelector('.device[data-version-id="' + CSS.escape(state.compareBaseVersion) + '"]')?.getBoundingClientRect();
+        const targetDeviceRect = document.querySelector('.device[data-version-id="' + CSS.escape(state.compareTargetVersion) + '"]')?.getBoundingClientRect();
+        const findingMarkerRect = smokeMarker?.getBoundingClientRect();
+        const commentMarkerRect = smokeCommentMarker?.getBoundingClientRect();
+        const markersFollowComparedViews = Boolean(baseDeviceRect && targetDeviceRect && findingMarkerRect && commentMarkerRect
+          && findingMarkerRect.left + findingMarkerRect.width / 2 < baseDeviceRect.left
+          && commentMarkerRect.left + commentMarkerRect.width / 2 > targetDeviceRect.right);
+        const userCommentHasDistinctColor = Boolean(smokeCommentMarker
+          && getComputedStyle(smokeCommentMarker).backgroundColor === 'rgb(124, 58, 237)');
+        smokeCommentMarker?.click();
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        const commentPopoverOpens = Boolean(document.querySelector('[data-annotation-popover="' + CSS.escape(smokeAnnotation.id) + '"]'));
+        document.querySelector('[data-collapse-annotation="' + CSS.escape(smokeAnnotation.id) + '"]')?.click();
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        const commentPopoverCollapses = !document.querySelector('[data-annotation-popover="' + CSS.escape(smokeAnnotation.id) + '"]')
+          && Boolean(document.querySelector('[data-open-annotation="' + CSS.escape(smokeAnnotation.id) + '"]'));
         const smokeListNumber = document.querySelector('.finding-card[data-finding-id="' + CSS.escape(smokeFinding.id) + '"] .finding-list-index')?.textContent?.trim();
         const markerNumberMatches = Boolean(smokeMarker && smokeMarker.textContent.trim() === smokeListNumber);
         smokeMarker?.click();
@@ -254,7 +277,8 @@ async function main() {
         findingsToggle?.click();
         await new Promise(resolve => requestAnimationFrame(resolve));
         const markersHide = document.querySelectorAll('.finding-pin,.finding-pin-card').length === 0
-          && findingsToggle?.getAttribute('aria-pressed') === 'false';
+          && findingsToggle?.getAttribute('aria-pressed') === 'false'
+          && Boolean(document.querySelector('[data-open-annotation="' + CSS.escape(smokeAnnotation.id) + '"]'));
         findingsToggle?.click();
         await new Promise(resolve => requestAnimationFrame(resolve));
         const markersRestore = Boolean(document.querySelector('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]'))
@@ -274,27 +298,35 @@ async function main() {
         const resolvedMarkersStayOnBaseline = document.querySelectorAll('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]').length === 1;
         const versionArchitectureWorks = resolvedMarkerHidden && baselineMarkerRestored && resolvedMarkersStayOnBaseline;
         const markerBeforeZoom = document.querySelector('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]')?.getBoundingClientRect();
-        const anchorBeforeZoom = document.querySelector('.device[data-screen-id="' + CSS.escape(smokeFinding.screenId) + '"] .device-content')?.getBoundingClientRect();
-        const markerOffsetBeforeZoom = markerBeforeZoom && anchorBeforeZoom ? {
-          x: markerBeforeZoom.left + markerBeforeZoom.width / 2 - anchorBeforeZoom.right,
-          y: markerBeforeZoom.top + markerBeforeZoom.height / 2 - (anchorBeforeZoom.top + Math.min(12, anchorBeforeZoom.height / 2)),
-        } : null;
+        const deviceBeforeZoom = document.querySelector('.device[data-version-id="' + CSS.escape(state.compareBaseVersion) + '"]')?.getBoundingClientRect();
+        const anchorBeforeZoom = document.querySelector('.device[data-version-id="' + CSS.escape(state.compareBaseVersion) + '"] .device-content')?.getBoundingClientRect();
+        const markerOffsetBeforeZoom = markerBeforeZoom && deviceBeforeZoom && anchorBeforeZoom ? (() => {
+          const center = markerBeforeZoom.left + markerBeforeZoom.width / 2;
+          const side = center < deviceBeforeZoom.left ? 'left' : 'right';
+          const centerY = markerBeforeZoom.top + markerBeforeZoom.height / 2;
+          return { side, x: center - (side === 'left' ? deviceBeforeZoom.left : deviceBeforeZoom.right), y: centerY - (anchorBeforeZoom.top + Math.min(12, anchorBeforeZoom.height / 2)), withinDeviceY: centerY >= deviceBeforeZoom.top - 1 && centerY <= deviceBeforeZoom.bottom + 1 };
+        })() : null;
         setZoom(.8);
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const zoomedMarker = document.querySelector('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]');
-        const zoomedAnchor = document.querySelector('.device[data-screen-id="' + CSS.escape(smokeFinding.screenId) + '"] .device-content');
+        const zoomedDevice = document.querySelector('.device[data-version-id="' + CSS.escape(state.compareBaseVersion) + '"]');
+        const zoomedAnchor = zoomedDevice?.querySelector('.device-content');
         const markerRect = zoomedMarker?.getBoundingClientRect();
+        const deviceRect = zoomedDevice?.getBoundingClientRect();
         const anchorRect = zoomedAnchor?.getBoundingClientRect();
-        const markerOffsetAfterZoom = markerRect && anchorRect ? {
-          x: markerRect.left + markerRect.width / 2 - anchorRect.right,
-          y: markerRect.top + markerRect.height / 2 - (anchorRect.top + Math.min(12, anchorRect.height / 2)),
-        } : null;
+        const markerOffsetAfterZoom = markerRect && deviceRect && anchorRect ? (() => {
+          const center = markerRect.left + markerRect.width / 2;
+          const side = center < deviceRect.left ? 'left' : 'right';
+          const centerY = markerRect.top + markerRect.height / 2;
+          return { side, x: center - (side === 'left' ? deviceRect.left : deviceRect.right), y: centerY - (anchorRect.top + Math.min(12, anchorRect.height / 2)), withinDeviceY: centerY >= deviceRect.top - 1 && centerY <= deviceRect.bottom + 1 };
+        })() : null;
         const markerTracksZoom = Boolean(markerOffsetBeforeZoom && markerOffsetAfterZoom
-          && Math.abs(markerOffsetBeforeZoom.x - markerOffsetAfterZoom.x) <= 2
-          && Math.abs(markerOffsetBeforeZoom.y - markerOffsetAfterZoom.y) <= 2);
+          && markerOffsetBeforeZoom.side === markerOffsetAfterZoom.side
+          && Math.abs(markerOffsetBeforeZoom.x) <= 70 && Math.abs(markerOffsetAfterZoom.x) <= 70
+          && markerOffsetBeforeZoom.withinDeviceY && markerOffsetAfterZoom.withinDeviceY);
         const markerTrackMetrics = { before: markerOffsetBeforeZoom, after: markerOffsetAfterZoom };
         const markerGroups = new Map();
-        for (const marker of document.querySelectorAll('.finding-pin[data-marker-device]')) {
+        for (const marker of document.querySelectorAll('.finding-pin[data-marker-device],.annotation-pin[data-marker-device]')) {
           const group = markerGroups.get(marker.dataset.markerDevice) || [];
           group.push(marker.getBoundingClientRect());
           markerGroups.set(marker.dataset.markerDevice, group);
@@ -318,6 +350,26 @@ async function main() {
         document.querySelector('[data-collapse-finding]')?.click();
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const markerLeaderWorks = leadersHiddenByDefault && leaderRevealsForOpenCard;
+        const railCommandsWork = ['inspect', 'review', 'comments'].every(tab => Boolean(document.querySelector('.workbench-rail [data-inspector-tab="' + tab + '"]')))
+          && document.querySelectorAll('.workbench-rail .rail-menu').length === 2
+          && Boolean(document.querySelector('.workbench-rail .rail-menu.language-menu .locale-current'))
+          && Boolean(document.querySelector('.workbench-rail .rail-menu .export-feedback'));
+        const fileRailMenu = document.querySelector('.workbench-rail .rail-menu:not(.language-menu)');
+        const languageRailMenu = document.querySelector('.workbench-rail .rail-menu.language-menu');
+        fileRailMenu?.querySelector('summary')?.click();
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        const fileRailMenuOpens = fileRailMenu?.open === true;
+        languageRailMenu?.querySelector('summary')?.click();
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        const railMenusAreExclusive = languageRailMenu?.open === true && fileRailMenu?.open === false;
+        document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        const railMenusDismiss = languageRailMenu?.open === false && fileRailMenu?.open === false;
+        const railMenusWork = fileRailMenuOpens && railMenusAreExclusive && railMenusDismiss;
+        state.annotations = state.annotations.filter(item => item.id !== smokeAnnotation.id);
+        state.openAnnotationId = null;
+        renderQueue();
+        renderFindingMarkers();
         setWorkbenchLocale('en', { remember: false, updateLocation: false });
         const localeMetrics = { englishCanvas: document.querySelector('.canvas-tools')?.getAttribute('aria-label'), englishVersionTitle: document.querySelector('.header-version-picker')?.getAttribute('title'), englishCompare: document.querySelector('.mode-button[data-view="compare"] .button-label')?.textContent?.trim() };
         const englishLocaleWorks = document.documentElement.lang === 'en'
@@ -437,6 +489,12 @@ async function main() {
           markerNumberMatches,
           markerPopoverOpens,
           markerPopoverCollapses,
+          commentPopoverOpens,
+          commentPopoverCollapses,
+          userCommentHasDistinctColor,
+          markersFollowComparedViews,
+          railCommandsWork,
+          railMenusWork,
           markersToggleWork: markersHide && markersRestore,
           versionArchitectureWorks,
           markerTracksZoom,
@@ -481,7 +539,9 @@ async function main() {
       || !workflow.handoffPanelWorks
       || !workflow.contextProposalAction || !workflow.importWorks || !workflow.compareVariantsWork || !workflow.reviewSectionsWork
       || !workflow.layerControlsWork || !workflow.markerNumberMatches || !workflow.markerPopoverOpens
-      || !workflow.markerPopoverCollapses || !workflow.markersToggleWork || !workflow.versionArchitectureWorks
+      || !workflow.markerPopoverCollapses || !workflow.commentPopoverOpens || !workflow.commentPopoverCollapses
+      || !workflow.userCommentHasDistinctColor || !workflow.markersFollowComparedViews || !workflow.railCommandsWork || !workflow.railMenusWork
+      || !workflow.markersToggleWork || !workflow.versionArchitectureWorks
       || !workflow.markerTracksZoom || !workflow.markerLayoutStable || !workflow.markerLeaderWorks || !workflow.middleMousePanWorks || !workflow.localeSwitchWorks
       || workflow.selected !== 1 || workflow.requestFindings !== 1 || !workflow.runtimeActionable
       || !workflow.sourceBeforeApproval || !workflow.sourceAfterApproval
