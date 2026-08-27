@@ -285,6 +285,31 @@ async function main() {
           && Math.abs(markerOffsetBeforeZoom.x - markerOffsetAfterZoom.x) <= 2
           && Math.abs(markerOffsetBeforeZoom.y - markerOffsetAfterZoom.y) <= 2);
         const markerTrackMetrics = { before: markerOffsetBeforeZoom, after: markerOffsetAfterZoom };
+        const markerGroups = new Map();
+        for (const marker of document.querySelectorAll('.finding-pin[data-marker-device]')) {
+          const group = markerGroups.get(marker.dataset.markerDevice) || [];
+          group.push(marker.getBoundingClientRect());
+          markerGroups.set(marker.dataset.markerDevice, group);
+        }
+        let markerOverlaps = 0;
+        for (const rects of markerGroups.values()) for (let first = 0; first < rects.length; first += 1) {
+          for (let second = first + 1; second < rects.length; second += 1) {
+            const x = Math.max(0, Math.min(rects[first].right, rects[second].right) - Math.max(rects[first].left, rects[second].left));
+            const y = Math.max(0, Math.min(rects[first].bottom, rects[second].bottom) - Math.max(rects[first].top, rects[second].top));
+            if (x * y > 1) markerOverlaps += 1;
+          }
+        }
+        const markerLayoutStable = markerGroups.size > 0 && markerOverlaps === 0;
+        const linkedMarker = document.querySelector('.finding-pin-leader + .finding-pin');
+        const leadersHiddenByDefault = [...document.querySelectorAll('.finding-pin-leader')]
+          .every(leader => Number(getComputedStyle(leader).opacity) === 0);
+        linkedMarker?.click();
+        await new Promise(resolve => setTimeout(resolve, 180));
+        const openLeader = document.querySelector('.finding-pin-leader + .finding-pin-card');
+        const leaderRevealsForOpenCard = !linkedMarker || Boolean(openLeader && Number(getComputedStyle(openLeader).opacity) === 1);
+        document.querySelector('[data-collapse-finding]')?.click();
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const markerLeaderWorks = leadersHiddenByDefault && leaderRevealsForOpenCard;
         setWorkbenchLocale('en', { remember: false, updateLocation: false });
         const englishLocaleWorks = document.documentElement.lang === 'en'
           && document.querySelector('.canvas-tools')?.getAttribute('aria-label') === 'Canvas tools'
@@ -402,6 +427,9 @@ async function main() {
           beforeAfterToggleWorks,
           markerTracksZoom,
           markerTrackMetrics,
+          markerLayoutStable,
+          markerOverlaps,
+          markerLeaderWorks,
           middleMousePanWorks: middlePanWorks && middlePanReleases,
           middlePanMetrics,
           localeSwitchWorks: englishLocaleWorks && russianLocaleRestores,
@@ -439,7 +467,7 @@ async function main() {
       || !workflow.contextProposalAction || !workflow.importWorks || !workflow.compareVariantsWork || !workflow.reviewSectionsWork
       || !workflow.layerControlsWork || !workflow.markerNumberMatches || !workflow.markerPopoverOpens
       || !workflow.markerPopoverCollapses || !workflow.markersToggleWork || !workflow.beforeAfterToggleWorks
-      || !workflow.markerTracksZoom || !workflow.middleMousePanWorks || !workflow.localeSwitchWorks
+      || !workflow.markerTracksZoom || !workflow.markerLayoutStable || !workflow.markerLeaderWorks || !workflow.middleMousePanWorks || !workflow.localeSwitchWorks
       || workflow.selected !== 1 || workflow.requestFindings !== 1 || !workflow.runtimeActionable
       || !workflow.sourceBeforeApproval || !workflow.sourceAfterApproval
       || !workflow.sourceApprovalGuard || !workflow.revisionVisible
@@ -571,8 +599,16 @@ async function main() {
   } finally {
     try { socket?.close(); } catch (_) {}
     try { browser.kill(); } catch (_) {}
-    await delay(100);
-    fs.rmSync(profile, { recursive: true, force: true });
+    if (browser.exitCode === null) await Promise.race([
+      new Promise(resolve => browser.once('exit', resolve)),
+      delay(1500),
+    ]);
+    let cleanupError = null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try { fs.rmSync(profile, { recursive: true, force: true }); cleanupError = null; break; }
+      catch (error) { cleanupError = error; await delay(150 * (attempt + 1)); }
+    }
+    if (cleanupError) console.warn(`Temporary browser profile could not be removed: ${cleanupError.message}`);
   }
 }
 
