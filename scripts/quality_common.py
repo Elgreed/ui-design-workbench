@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shared deterministic helpers for UI preview quality gates."""
+"""Shared deterministic helpers for UI Design Workbench quality gates."""
 
 from __future__ import annotations
 
@@ -89,4 +89,3 @@ def node_screen_map(ir: dict[str, Any]) -> dict[str, set[str]]:
     for screen in ir.get("screens", []):
         visit(str(screen.get("root", "")), str(screen.get("id", "")), set())
     return result
-

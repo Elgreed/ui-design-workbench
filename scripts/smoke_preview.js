@@ -98,7 +98,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const input = path.resolve(args.input);
   if (!fs.existsSync(input)) throw new Error(`Preview not found: ${input}`);
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ui-code-preview-smoke-'));
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ui-design-workbench-smoke-'));
   const activePort = path.join(profile, 'DevToolsActivePort');
   const url = pathToFileURL(input);
   url.searchParams.set('diagnostics', 'run');
@@ -213,7 +213,7 @@ async function main() {
           evidence: [{ type: 'source', ref: 'smoke', note: 'Synthetic smoke fixture.' }], effort: 'small', proposalVersionId: 'smoke-imported-proposal'
         };
         importExpertReviewData({
-          type: 'ui-code-preview-expert-review-result', requestRevision: reviewRevision, project: ir.project?.name,
+          type: 'ui-design-workbench-expert-review-result', requestRevision: reviewRevision, project: ir.project?.name,
           summary: 'Smoke import', findings: [smokeFinding],
           versions: [{ id: 'smoke-imported-proposal', label: 'Smoke proposal', kind: 'proposal', parent: baselineVersion, findingIds: [smokeFinding.id], nodeOverrides: {} }]
         });
@@ -299,14 +299,14 @@ async function main() {
           autoReviewButton: Boolean(document.querySelector('.run-review')),
           codexReviewButtonEnabled: document.querySelector('.open-codex-review')?.disabled === false,
           expertReviewButtonEnabled: document.querySelector('.export-review-request')?.disabled === false,
-          expertRequestValid: expertRequest?.type === 'ui-code-preview-expert-review-request'
+          expertRequestValid: expertRequest?.type === 'ui-design-workbench-expert-review-request'
             && expertRequest?.runtimeDiagnostics?.status === 'complete'
             && expertRequest?.screenIds?.length === screens.length
             && expertRequest?.uiIr?.screens?.length === screens.length,
           expertHandoffValid: expertHandoff?.supported === true
             && expertHandoff?.url?.startsWith('codex://new?')
             && expertHandoff?.path === previewContext.artifactDir
-            && expertHandoff?.prompt?.includes('$ui-code-preview')
+            && expertHandoff?.prompt?.includes('$ui-design-workbench')
             && expertHandoff?.prompt?.includes('Не изменяй исходный проект'),
           proposalHandoffValid: proposalHandoff?.supported === true
             && proposalHandoff?.context?.acceptedFindingIds?.length === selected

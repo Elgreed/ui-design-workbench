@@ -1,9 +1,9 @@
 ---
-name: ui-code-preview
+name: ui-design-workbench
 description: Reconstruct repository UI, perform evidence-based UI/UX audits with corrected Before/After proposals, generate new interfaces, or redesign existing screens as standards-aware interactive HTML previews without running the app or changing source files. Use for UI review and design work across Android, iOS, Web, React Native, and Flutter; do not use when the user wants to execute or test the real application.
 ---
 
-# UI Code Preview
+# UI Design Workbench
 
 Build a reviewable HTML UI workbench. Treat the repository as read-only until the user separately approves a source-code patch.
 
@@ -101,7 +101,7 @@ This command applies to reconstruction and redesign with an existing repository.
 - Confirm the Review tab begins with one `Запустить ревью` action that checks every assembled screen/profile, focuses all non-pass findings without duplicating deterministic IDs on rerun, reports progress and completion, and enables the expert handoff only after a completed run. Embed the absolute review-directory path in generated HTML. The official `codex://new?prompt=...&path=...` action must prepare a self-contained task restricted to review artifacts, require the user to send the prefilled prompt, preserve the immutable baseline, and keep source changes blocked; retain `ui-expert-review-request.json` as a manual fallback.
 - Structure Review as isolated `Сводка`, `Проблемы`, and `Изменения` workspaces with one contextual primary action. Show exact screen/profile/check/state coverage and named run history; never label coverage as all states unless every declared variant was executed in every included deterministic profile.
 - Group repeated runtime failures by scenario and screen into systemic findings, preserve measured instances, and provide severity/source/screen filters plus bulk decisions. Support `All screens` and `Current screen` review scopes; include the chosen scope in history and exported jobs.
-- Accept a revision/project-validated `ui-code-preview-expert-review-result` or returned complete UI IR, merge stable findings and sparse proposal versions without changing the immutable baseline, record the import in history, and keep source modification blocked. Compare any two retained review versions in split or overlay mode.
+- Accept a revision/project-validated `ui-design-workbench-expert-review-result`, the legacy `ui-code-preview-expert-review-result`, or returned complete UI IR; merge stable findings and sparse proposal versions without changing the immutable baseline, record the import in history, and keep source modification blocked. Compare any two retained review versions in split or overlay mode.
 - Confirm rerenders preserve selected node, active finding/diagnostic highlight, inner screen scroll, overview-stage scroll, panel widths, and review filters. Change view or zoom during selection and verify the reviewer does not lose context.
 - Set a stable `review.revision`. Confirm saved state from a different computed revision is never silently applied: the workbench must offer explicit migration of still-valid annotations/findings or a clean reset.
 - For expert review, confirm every finding has a stable ID, category, severity, confidence, observation, user impact, recommendation, evidence, source target, and proposal/no-proposal disposition. Confirm screen coverage and state coverage are explicit, repeated systemic problems are separated from individual instances, and blocker/high findings open directly in a corrected comparison.

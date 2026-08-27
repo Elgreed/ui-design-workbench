@@ -1,4 +1,4 @@
 interface:
-  display_name: "UI Code Preview"
+  display_name: "UI Design Workbench"
   short_description: "Reconstruct, generate, or redesign standards-aware UI"
-  default_prompt: "Use $ui-code-preview to reconstruct, generate, redesign, or review repository UI as an interactive HTML workbench; apply the matching platform profile and complete coverage, interaction, diagnostics, and visual-regression gates without running the app or changing source files."
+  default_prompt: "Use $ui-design-workbench to reconstruct, generate, redesign, or review repository UI as an interactive HTML workbench; apply the matching platform profile and complete coverage, interaction, diagnostics, and visual-regression gates without running the app or changing source files."

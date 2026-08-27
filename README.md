@@ -1,4 +1,4 @@
-# UI Code Preview
+# UI Design Workbench
 
 Навык Codex для реконструкции, генерации, редизайна и глубокого UI/UX-ревью интерфейсов по исходному коду проекта.
 
@@ -21,13 +21,13 @@
 Клонируйте репозиторий в каталог навыков Codex:
 
 ```powershell
-git clone https://github.com/Elgreed/ui-code-preview.git "$env:USERPROFILE\.codex\skills\ui-code-preview"
+git clone https://github.com/Elgreed/ui-design-workbench.git "$env:USERPROFILE\.codex\skills\ui-design-workbench"
 ```
 
 После установки перезапустите Codex или начните новую задачу. Навык можно вызвать явно:
 
 ```text
-$ui-code-preview собери интерактивный макет UI из этого проекта
+$ui-design-workbench собери интерактивный макет UI из этого проекта
 ```
 
 ## Основной процесс

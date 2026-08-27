@@ -11,6 +11,7 @@ from typing import Any
 
 
 ALLOWED_STATUSES = {"new", "in-progress", "proposed", "accepted", "rejected", "resolved"}
+FIX_REQUEST_TYPES = {"ui-design-workbench-fix-request", "ui-code-preview-fix-request"}
 ALLOWED_DECISIONS = {"pending", "accepted", "rejected"}
 ALLOWED_FINDING_DECISIONS = {"accepted", "rejected", "deferred"}
 ALLOWED_SEVERITIES = {"blocker", "high", "medium", "low"}
@@ -163,12 +164,12 @@ def validate_feedback(ir: dict[str, Any], feedback: dict[str, Any]) -> list[str]
 
 
 def validate_fix_request(ir: dict[str, Any], request: dict[str, Any]) -> list[str]:
-    if request.get("type") != "ui-code-preview-fix-request":
+    if request.get("type") not in FIX_REQUEST_TYPES:
         return []
     errors: list[str] = []
     accepted = request.get("acceptedFindingIds", [])
-    if request.get("version") != 1:
-        errors.append("Fix request version must be 1")
+    if request.get("version") not in {1, 2}:
+        errors.append("Fix request version must be 1 or 2")
     if not isinstance(accepted, list) or not accepted:
         errors.append("Fix request acceptedFindingIds must be a non-empty array")
         accepted = []
@@ -237,7 +238,7 @@ def main() -> int:
     except ValueError as exc:
         print(exc, file=sys.stderr)
         return 2
-    is_fix_request = payload.get("type") == "ui-code-preview-fix-request"
+    is_fix_request = payload.get("type") in FIX_REQUEST_TYPES
     feedback = payload.get("reviewFeedback") if is_fix_request else payload
     if not isinstance(feedback, dict):
         print("Fix request reviewFeedback must be an object", file=sys.stderr)
