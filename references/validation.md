@@ -14,7 +14,8 @@ Run this checklist for every final bundle. The detailed commands and report form
 - All screens uses a single scalable canvas at Fit, 20%, 100%, and 200% without changing card dimensions, reflow, overlap, or incorrect scroll bounds. Zoom reset updates both geometry and displayed value.
 - Prototype navigation, browser history, Single-screen freezing, active/hover-target tree colors, menu mutual exclusion/dismissal, panel collapse/resize persistence, compact overlay behavior, and selection/scroll persistence all work.
 - Properties, Review, and Comments are isolated contextual panels. Icons use one coherent SVG family, icon-only actions have names/tooltips, and top chrome remains compact and unambiguous.
-- Before/After split and overlay preserve anchors, highlight changes, retain decisions, and never edit source.
+- Problems/Before/After toggles expose accurate pressed/disabled states, keep at least one version visible, and activate split/overlay only when both versions are shown.
+- Finding markers use the same stable numbers as the Problems list, remain anchored after zoom/scroll/resize, open only one inline description at a time, collapse back to a circle, follow all finding filters, and never edit source.
 
 ## Deep review
 

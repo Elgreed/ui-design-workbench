@@ -45,6 +45,12 @@ class CliPackagingTests(unittest.TestCase):
         self.assertIn('"handoffProvider":"codex"', codex)
         self.assertIn("open-agent-review", generic)
         self.assertIn("agent-handoff-panel", generic)
+        self.assertIn('data-canvas-layer="findings"', generic)
+        self.assertIn('data-canvas-layer="before"', generic)
+        self.assertIn('data-canvas-layer="after"', generic)
+        self.assertIn("finding-pin-card", generic)
+        self.assertIn("data-collapse-finding", generic)
+        self.assertIn("finding-list-index", generic)
         self.assertNotIn("open-codex-review", generic)
         self.assertNotIn("codex-handoff-panel", generic)
 

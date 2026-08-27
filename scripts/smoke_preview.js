@@ -166,6 +166,11 @@ async function main() {
         selectedNodeId: state.selectedNodeId,
         selectedScreenId: state.selectedScreenId,
         focusedFindingId: state.focusedFindingId,
+        openFindingId: state.openFindingId,
+        showFindings: state.showFindings,
+        showBefore: state.showBefore,
+        showAfter: state.showAfter,
+        layerReturnView: state.layerReturnView,
         diagnosticTargetIds: JSON.parse(JSON.stringify(state.diagnosticTargetIds)),
         stageScroll: JSON.parse(JSON.stringify(state.stageScroll)),
         screenScrolls: JSON.parse(JSON.stringify(state.screenScrolls)),
@@ -222,12 +227,45 @@ async function main() {
           && versionById['smoke-imported-proposal'];
         state.compareBaseVersion = versions[1]?.id || baselineVersion;
         state.compareTargetVersion = 'smoke-imported-proposal';
+        state.findingFocus = [];
+        state.findingFilter = 'all';
+        state.findingSource = 'all';
+        state.findingScreen = 'all';
+        state.showFindings = true;
         renderCompareVersionOptions();
         setScreen(screens[0].id, 'compare');
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const compareVariantsWork = document.querySelectorAll('.compare-panel').length === 2
-          && document.querySelector('.compare-base-select')?.value === state.compareBaseVersion
-          && document.querySelector('.compare-target-select')?.value === state.compareTargetVersion;
+          && document.querySelector('.version-select')?.hidden === true
+          && !document.querySelector('.compare-version-select')
+          && document.querySelector('[data-canvas-layer="before"]')?.getAttribute('aria-pressed') === 'true'
+          && document.querySelector('[data-canvas-layer="after"]')?.getAttribute('aria-pressed') === 'true';
+        const smokeMarker = document.querySelector('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]');
+        const smokeListNumber = document.querySelector('.finding-card[data-finding-id="' + CSS.escape(smokeFinding.id) + '"] .finding-list-index')?.textContent?.trim();
+        const markerNumberMatches = Boolean(smokeMarker && smokeMarker.textContent.trim() === smokeListNumber);
+        smokeMarker?.click();
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        const markerPopoverOpens = Boolean(document.querySelector('[data-finding-popover="' + CSS.escape(smokeFinding.id) + '"]'));
+        document.querySelector('[data-collapse-finding="' + CSS.escape(smokeFinding.id) + '"]')?.click();
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        const markerPopoverCollapses = !document.querySelector('[data-finding-popover="' + CSS.escape(smokeFinding.id) + '"]')
+          && Boolean(document.querySelector('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]'));
+        const findingsToggle = document.querySelector('[data-canvas-layer="findings"]');
+        findingsToggle?.click();
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        const markersHide = document.querySelectorAll('.finding-pin,.finding-pin-card').length === 0
+          && findingsToggle?.getAttribute('aria-pressed') === 'false';
+        findingsToggle?.click();
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        const markersRestore = Boolean(document.querySelector('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]'))
+          && findingsToggle?.getAttribute('aria-pressed') === 'true';
+        const beforeToggle = document.querySelector('[data-canvas-layer="before"]');
+        beforeToggle?.click();
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const afterOnlyWorks = !state.showBefore && state.showAfter && state.view !== 'compare';
+        beforeToggle?.click();
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const beforeAfterToggleWorks = afterOnlyWorks && state.showBefore && state.showAfter && state.view === 'compare';
         for (const id of Object.keys(state.findingDecisions)) state.findingDecisions[id] = 'pending';
         state.findingDecisions[smokeFinding.id] = 'accepted';
         renderFindings();
@@ -316,6 +354,12 @@ async function main() {
           contextProposalAction,
           importWorks: Boolean(importWorks),
           compareVariantsWork,
+          layerControlsWork: document.querySelectorAll('[data-canvas-layer]').length === 3,
+          markerNumberMatches,
+          markerPopoverOpens,
+          markerPopoverCollapses,
+          markersToggleWork: markersHide && markersRestore,
+          beforeAfterToggleWorks,
           reviewSectionsWork: ['summary', 'problems', 'changes'].every(section => Boolean(document.querySelector('[data-review-section="' + section + '"]'))),
           auditLinks: document.querySelectorAll('[data-audit-findings]').length,
           linkedVisible,
@@ -348,6 +392,8 @@ async function main() {
       || !workflow.expertHandoffValid || !workflow.proposalHandoffValid
       || !workflow.handoffPanelWorks
       || !workflow.contextProposalAction || !workflow.importWorks || !workflow.compareVariantsWork || !workflow.reviewSectionsWork
+      || !workflow.layerControlsWork || !workflow.markerNumberMatches || !workflow.markerPopoverOpens
+      || !workflow.markerPopoverCollapses || !workflow.markersToggleWork || !workflow.beforeAfterToggleWorks
       || workflow.selected !== 1 || workflow.requestFindings !== 1 || !workflow.runtimeActionable
       || !workflow.sourceBeforeApproval || !workflow.sourceAfterApproval
       || !workflow.sourceApprovalGuard || !workflow.revisionVisible

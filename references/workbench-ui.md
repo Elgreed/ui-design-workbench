@@ -11,6 +11,7 @@ Give each persistent region one job:
 - one compact document bar contains product identity, application menus, current screen path, active version, and current mode status;
 - the canvas owns screen previews and comparisons;
 - a floating canvas palette switches view and interaction tools;
+- one compact canvas-visibility strip independently toggles `Problems`, `Before`, and `After`; comparison layout controls appear only while both versions are visible;
 - a small bottom-right cluster owns zoom only;
 - the right panel is contextual and tabbed into `Properties`, `Review`, and `Comments` rather than stacking all three workflows.
 
@@ -36,6 +37,7 @@ Official pattern references:
 - Put one compact `Запустить ревью` launcher at the top of the Review tab. It is the primary entry point for reviewing already assembled mockups; local diagnostic implementation details stay below it.
 - After the run, show the issue count and a secondary `Подготовить AI-ревью` handoff. It copies or downloads a provider-neutral job; an optional adapter may open a prepared native agent task, but it never submits the prompt. Keep a compact JSON-download action as the portable fallback, not a competing primary path.
 - Keep finding observation and actions visible; place impact, recommendation, and evidence in an expandable detail region.
+- Use the same stable number for each finding in the Problems list and on the canvas. Canvas markers remain circles until clicked, open one compact anchored card at a time, and expose an unambiguous top-right collapse control that restores the circle.
 - Use short empty states that name the next direct action. Do not add tutorial paragraphs to compensate for ambiguous controls.
 - Split the Review tab into `Сводка`, `Проблемы`, and `Изменения`. Summary owns scope, coverage, history, and diagnostics; Problems owns audit evidence and selection; Changes owns the correction queue, imported proposals, and design approval. Do not vertically stack all three workflows.
 - Keep one sticky contextual primary action whose label advances with the state: run review, choose problems, create proposal, approve proposal, or prepare implementation. Secondary export/reject controls may remain adjacent but must not compete visually.
@@ -68,6 +70,9 @@ Official pattern references:
 - The current screen and hovered navigation destination use distinct colors.
 - Design approval and source implementation are separate phases with separate actions.
 - Compare mode allows any two retained review versions, not only baseline versus latest, while preserving the immutable baseline.
+- `Before` and `After` are toggle buttons, not a mode selector: either may be shown alone, both activate comparison, and at least one must remain visible. The active proposal is chosen in the Changes workflow; the canvas strip controls visibility only.
+- `Problems` is a visibility layer, not a separate review mode. Its marker set follows the current severity/source/screen/focused-block filters and never invents an anchor for a finding whose screen cannot be located.
+- Clicking a finding marker opens its description on the canvas without navigating away. Opening a second marker closes the first; hiding Problems, changing screen/version, or collapsing the card leaves list state and numbering synchronized.
 - Large reviews default to all screens but may be scoped to the current screen. The scope and exact counts must travel in diagnostics and AI handoff payloads.
 
 ## Production acceptance gate
@@ -79,6 +84,7 @@ Before delivery:
 3. Run the Diagnostics Runner and the review workflow smoke test.
 4. Click the one-button review launcher and confirm that it covers every screen/profile, converts every non-pass result into a focused finding set without duplicates, and enables a self-contained expert-review export only after completion.
 5. Verify the agent handoff uses an absolute review-directory path, prepares only a prompt/job, clearly asks the user to send it, requires no server or open port, and leaves source modification blocked. Verify `Скопировать запрос`, `Обновить макет`, and the JSON fallback independently; test native adapters separately.
-6. Verify Summary/Problems/Changes isolation, contextual primary-action progression, source/screen filters, bulk selection, named run history, expert-result import, revision/project rejection, and arbitrary version-to-version comparison.
+6. Verify Summary/Problems/Changes isolation, contextual primary-action progression, source/screen filters, bulk selection, named run history, expert-result import, revision/project rejection, and active proposal comparison.
 7. Verify compact-width panel mutual exclusion, every right-panel tab, every view/tool combination, panel resizing/collapse, menu dismissal, zoom, tree search, and version approval.
-8. Reject the shell if understanding the primary controls depends on permanent help copy.
+8. Verify Problems/Before/After toggle state, at-least-one-version protection, marker/list number parity, marker anchoring after zoom/scroll/resize, single-popover behavior, and collapse back to a marker.
+9. Reject the shell if understanding the primary controls depends on permanent help copy.
