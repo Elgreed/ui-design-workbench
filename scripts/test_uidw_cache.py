@@ -163,9 +163,14 @@ class IncrementalCacheTests(unittest.TestCase):
             <section id="mcp" class="panel" data-section="mcp">
               <button data-mcp-tab="overview">Overview</button>
               <button data-mcp-tab="tools">Tools</button>
+              <div id="mcp-list-view"></div>
+              <div id="mcp-detail-view" hidden></div>
+              <div id="mcp-loading" role="status" hidden></div>
               <section role="tabpanel" data-mcp-panel="overview"></section>
               <section role="tabpanel" data-mcp-panel="tools"></section>
+              <dialog id="mcp-tool-dialog"><h3>Tool settings</h3></dialog>
             </section>
+            <form id="admin-login-form"></form>
             """,
             encoding="utf-8",
         )
@@ -188,10 +193,22 @@ class IncrementalCacheTests(unittest.TestCase):
         )
         self.assertEqual(nested["McpToolsView"]["groupPath"], ["Integrations", "External sources"])
         self.assertEqual(nested["ProcessesJobsView"]["groupPath"], ["System", "Processes"])
+        surfaces = {item["id"]: item for item in scan["surfaces"]}
+        self.assertEqual(surfaces["admin.html#logical-state-mcp-list-view"]["kind"], "logical-state")
+        self.assertEqual(surfaces["admin.html#logical-state-mcp-detail-view"]["state"], "detail")
+        self.assertEqual(surfaces["admin.html#state-mcp-loading"]["state"], "loading")
+        self.assertEqual(surfaces["admin.html#dialog-mcp-tool-dialog"]["parentFragment"], "#mcp")
+        self.assertEqual(surfaces["admin.html#auth-admin-login-form"]["state"], "auth-required")
 
         ir = uidw.read_json(paths["ir"], {})
         discovered = {item["name"] for item in ir["discoveredScreens"]}
         self.assertTrue(set(nested).issubset(discovered))
+        self.assertEqual(len(ir["discoveredSurfaces"]), 5)
+        graph = ir["navigationGraph"]
+        graph_edges = {(item["from"], item["to"], item["kind"]) for item in graph["edges"]}
+        self.assertIn(("mcpview", "mcptoolsview", "open-logical-view"), graph_edges)
+        self.assertIn(("processesjobsview", "processesview", "return-to-parent"), graph_edges)
+        self.assertFalse(graph["unresolvedTargets"])
 
         def depth(items: list[dict], level: int = 0) -> int:
             return max([level, *(depth(item.get("children", []), level + 1) for item in items if item.get("children"))])

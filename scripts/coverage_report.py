@@ -9,7 +9,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from quality_common import read_json, walk_tree_screen_ids, write_json
+from quality_common import hierarchy_issues, navigation_graph_issues, read_json, walk_tree_screen_ids, write_json
 from render_preview import fidelity_audit
 from validate_platform_profiles import validate_profiles
 
@@ -32,6 +32,8 @@ def build_report(ir: dict[str, Any], purpose: str = "projection") -> dict[str, A
     missing_tree = sorted(set(screen_ids) - set(tree_ids))
     duplicate_tree = sorted(item for item, count in tree_counts.items() if count > 1)
     unknown_tree = sorted(set(tree_ids) - set(screen_ids))
+    hierarchy = hierarchy_issues(ir)
+    graph_issues = navigation_graph_issues(ir)
     mode = ir.get("design", {}).get("mode", "reconstruct")
     needs_design_evidence = purpose == "review" and mode in {"generate", "redesign"}
     needs_source = mode == "reconstruct"
@@ -39,6 +41,8 @@ def build_report(ir: dict[str, Any], purpose: str = "projection") -> dict[str, A
     gates = [
         gate("fidelity", "Renderer fidelity audit", audit.get("status") == "reviewable", audit.get("status"), "reviewable", audit.get("reasons")),
         gate("screen-tree", "Every screen appears once in screenTree", not missing_tree and not duplicate_tree and not unknown_tree, len(tree_ids), len(screen_ids), {"missing": missing_tree, "duplicates": duplicate_tree, "unknown": unknown_tree}),
+        gate("screen-hierarchy", "screenTree preserves source navigation hierarchy", not hierarchy, len(hierarchy), 0, hierarchy),
+        gate("navigation-graph", "Source navigation graph covers nested logical views", not graph_issues, len(graph_issues), 0, graph_issues),
         gate("screens", "Discovered screen coverage", audit.get("screenCoverage", 0) == 1, audit.get("screenCoverage", 0), 1, audit.get("missingScreens")),
         gate("routes", "Discovered route coverage", audit.get("routeCoverage", 0) == 1, audit.get("routeCoverage", 0), 1, audit.get("missingRoutes")),
         gate("navigation", "Discovered navigation coverage", audit.get("navigationCoverage", 0) == 1, audit.get("navigationCoverage", 0), 1, audit.get("missingNavigationTargets")),

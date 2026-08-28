@@ -204,6 +204,17 @@ uidw --repo <repo> context --screen <screen-id> --budget 4000
 
 By default, derived state is stored in the operating-system user cache, not in the project or installed skill. Content hashes invalidate only changed UI files. Set `UIDW_CACHE_HOME` to override the cache root.
 
+Large reviews can be handed to an agent without loading the complete IR. `scope` writes a structurally complete bounded context for named screens/findings; `patch` accepts only sparse review, proposal, annotation, and verification operations and refuses baseline UI replacement.
+
+```sh
+uidw --repo <repo> scope --ir <review-dir>/ui-ir.json --screen <screen-id> --budget 4000
+uidw --repo <repo> patch template --ir <review-dir>/ui-ir.json --context <review-dir>/ui-agent-context.json
+uidw --repo <repo> patch validate <review-dir>/ui-ir.patch.json --ir <review-dir>/ui-ir.json
+uidw --repo <repo> patch apply <review-dir>/ui-ir.patch.json --ir <review-dir>/ui-ir.json --output <review-dir>/ui-ir.proposed.json
+```
+
+An optional local stdio MCP facade exposes the same bounded operations without a port or network service. Install it with `pip install ".[mcp]"` and run `uidw-mcp --repo <repo>` or `uidw --repo <repo> mcp`; the regular CLI has no MCP dependency and remains the complete fallback.
+
 ## Optional platform guidance
 
 Platform guidance for ordinary UI implementation tasks is off by default:
@@ -235,6 +246,8 @@ Flutter and React Native require an explicit target platform before platform-spe
 | --- | --- |
 | `uidw doctor` | Check installation and optional dependencies |
 | `uidw --repo <repo> context --json` | Return compact cached project context |
+| `uidw --repo <repo> scope ...` | Prepare bounded screen/finding context for an agent |
+| `uidw --repo <repo> patch ...` | Validate or apply sparse review-only IR operations |
 | `uidw --repo <repo> workbench ...` | Build and validate the HTML projection |
 | `uidw --repo <repo> check --ir <file> --level full` | Repeat projection checks without UI/UX audit |
 | `uidw --repo <repo> review ...` | Explicitly start UI/UX review |
@@ -281,6 +294,8 @@ Do not edit project source unless an apply job explicitly sets sourceChangeAllow
 ```text
 SKILL.md                    Agent workflow adapter
 scripts/uidw.py             Main CLI
+scripts/uidw_mcp.py         Optional local stdio MCP facade
+scripts/scoped_context.py   Bounded context and safe IR patches
 scripts/scan_ui.py          Incremental source scanner
 scripts/render_preview.py   Standalone HTML renderer
 scripts/smoke_preview.js    Headless workbench checks
@@ -292,4 +307,4 @@ fixtures/golden/            Adapter and workbench-shell regression fixtures
 
 ## Version
 
-Current CLI version: `0.3.4`.
+Current CLI version: `0.3.5`.

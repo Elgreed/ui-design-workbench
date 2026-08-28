@@ -44,6 +44,53 @@
         "additionalProperties": true
       }
     },
+    "screenTree": { "type": "array", "minItems": 1 },
+    "discoveredScreens": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "file": { "type": "string" },
+          "fragment": { "type": "string" },
+          "label": { "type": "string" },
+          "groupPath": { "type": "array", "items": { "type": "string" } },
+          "parentFragment": { "type": "string" },
+          "sourceKind": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "discoveredSurfaces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "state", "file", "selector"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "kind": { "enum": ["overlay", "state", "logical-state"] },
+          "state": { "type": "string", "minLength": 1 },
+          "file": { "type": "string", "minLength": 1 },
+          "selector": { "type": "string", "minLength": 1 },
+          "parentFragment": { "type": "string" },
+          "sourceKind": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "navigationGraph": {
+      "type": "object",
+      "properties": {
+        "version": { "const": 1 },
+        "source": { "const": "scan-evidence" },
+        "nodes": { "type": "array" },
+        "edges": { "type": "array" },
+        "flows": { "type": "array" },
+        "navigationTargets": { "type": "array" },
+        "unresolvedTargets": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
     "nodes": {
       "type": "object",
       "additionalProperties": {

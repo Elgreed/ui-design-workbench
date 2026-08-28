@@ -14,6 +14,7 @@ import copy
 import datetime as dt
 import hashlib
 import html
+import importlib.util
 import json
 import os
 import re
@@ -29,6 +30,14 @@ from typing import Any
 from quality_common import node_screen_map
 from fidelity_core import fidelity_report, seal_baseline
 from fidelity_adapters import adapter_capabilities
+from scoped_context import (
+    apply_patch_file,
+    build_scoped_context,
+    patch_template,
+    read_json as read_scoped_json,
+    validate_patch as validate_ir_patch,
+    write_json as write_scoped_json,
+)
 from scan_ui import (
     ASSET_EXTENSIONS,
     SCANNER_VERSION,
@@ -41,8 +50,8 @@ from scan_ui import (
 )
 
 
-CACHE_VERSION = 7
-CLI_VERSION = "0.3.4"
+CACHE_VERSION = 8
+CLI_VERSION = "0.3.5"
 CONFIG_VERSION = 5
 STATE_DIR_NAME = ".ui-design-workbench"
 CONFIG_NAME = "config.json"
@@ -1292,6 +1301,12 @@ def doctor(root: Path) -> dict[str, Any]:
         "python": {"available": True, "version": sys.version.split()[0], "executable": sys.executable},
         "node": {"available": bool(shutil.which("node")), "path": shutil.which("node")},
         "chromium": {"available": bool(chrome_path()), "path": chrome_path()},
+        "mcp": {
+            "available": importlib.util.find_spec("mcp") is not None,
+            "transport": "stdio",
+            "command": f'uidw-mcp --repo "{root}"',
+            "requiredForCli": False,
+        },
         "cache": status,
         "stateDir": str(paths["dir"]),
         "stateFiles": {"sourceIndex": str(paths["scan"]), "designModel": str(paths["design"]), "reviewState": str(paths["review"])},
@@ -1702,34 +1717,69 @@ def prepare_agent_job(
     source_targets = source_targets_for_findings(root, selected)
     if source_change_allowed and not source_targets:
         raise ValueError("Selected findings have no verified source targets inside the repository")
-    allowed_writes = source_targets if source_change_allowed else ["ui-ir.json", "ui-preview.html", "*.report.json"]
+    screen_ids = sorted({str(item.get("screenId")) for item in selected if item.get("screenId")})
+    if not selected and scope == "current":
+        screen_ids = [str(item.get("id")) for item in ir.get("screens", [])[:1] if item.get("id")]
+    context_file = output.resolve().parent / "ui-agent-context.json"
+    patch_file = output.resolve().parent / "ui-ir.patch.json"
+    scoped = build_scoped_context(
+        ir,
+        screen_ids=screen_ids,
+        finding_ids=selected_ids,
+        token_budget=5000 if selected_ids else 1800,
+        ui_ir_file=str(ir_path.resolve()),
+    )
+    write_scoped_json(context_file, scoped)
+    write_scoped_json(patch_file, patch_template(ir, str(ir_path.resolve()), str(context_file)))
+    allowed_writes = source_targets if source_change_allowed else ["ui-ir.patch.json", "ui-ir.proposed.json", "ui-preview.html", "*.report.json"]
+    config = load_config(state_paths(root)["config"])
+    preview_config = effective_preview_config(config)
+    review_config = effective_review_config(config)
     job = {
         "type": "ui-design-workbench-agent-job",
-        "version": 2,
+        "version": 3,
         "provider": provider,
         "kind": kind,
         "project": ir.get("project", {}).get("name", root.name),
         "projectRoot": str(root.resolve()),
         "artifactDir": str(ir_path.resolve().parent),
         "uiIrFile": str(ir_path.resolve()),
+        "contextFile": str(context_file),
+        "patchFile": str(patch_file),
+        "contextBudget": scoped.get("contextBudget", {}),
         "scope": scope,
-        "screenIds": sorted({str(item.get("screenId")) for item in selected if item.get("screenId")}) if selected else [str(item.get("id")) for item in ir.get("screens", [])],
+        "screenIds": screen_ids,
         "acceptedFindingIds": selected_ids,
         "sourceTargets": source_targets,
         "allowedWrites": allowed_writes,
         "sourceChangeAllowed": source_change_allowed,
         "directSourceAuthorization": bool(source_change_allowed and direct),
-        "configuration": configuration_context(load_config(state_paths(root)["config"])),
+        "configuration": {
+            "detailLevel": config.get(DETAIL_KEY),
+            "validation": review_config.get("validation"),
+            "defaultView": preview_config.get("defaultView"),
+            "uiModeEnabled": bool(config.get(UI_MODE_KEY, {}).get("enabled")),
+        },
         "requiredChatReport": ["number", "findingId", "screen", "problem", "implementedFix", "changedFiles", "verification", "remainingReason"],
         "requestedAction": {
-            "expert": "Review the requested UI scope and return evidence-based findings without changing project source.",
-            "proposal": "Create sparse proposal versions only for the selected findings without changing project source.",
+            "expert": "Read only contextFile. Review its catalog in small screen scopes, then write findings and sparse proposal versions as operations in patchFile. Never load the complete UI IR into the prompt.",
+            "proposal": "Read only contextFile. Create sparse proposal operations in patchFile for the selected findings without changing project source.",
             "implementation": "Implement the selected findings in the verified project source targets, run incremental uidw sync and targeted verification, and do not repeat the full AI review.",
         }[kind],
         "createdAt": utc_now(),
     }
     write_json(output.resolve(), job)
-    return {"version": 1, "status": "prepared", "kind": kind, "jobFile": str(output.resolve()), "findingIds": selected_ids, "sourceTargets": source_targets}
+    return {
+        "version": 1,
+        "status": "prepared",
+        "kind": kind,
+        "jobFile": str(output.resolve()),
+        "contextFile": str(context_file),
+        "patchFile": str(patch_file),
+        "contextTokens": scoped.get("contextBudget", {}).get("estimatedTokens"),
+        "findingIds": selected_ids,
+        "sourceTargets": source_targets,
+    }
 
 
 def import_review_result(ir_path: Path, result_path: Path, output: Path) -> dict[str, Any]:
@@ -2281,6 +2331,20 @@ def parse_args() -> argparse.Namespace:
     context_parser.add_argument("--budget", type=int, help="Approximate maximum token budget for the exported context")
     context_parser.add_argument("--changed-only", action="store_true", help="Include only files and entities affected by the latest UI change")
     context_parser.add_argument("--format", choices=("json", "markdown"), default="json", help="Context artifact format")
+    scope_parser = subparsers.add_parser("scope", help=advanced_help)
+    scope_parser.add_argument("--ir", type=Path, help="UI IR; defaults to the cached project IR")
+    scope_parser.add_argument("--screen", action="append", default=[], help="Screen id or name; repeat for a small multi-screen scope")
+    scope_parser.add_argument("--finding", action="append", default=[], help="Stable finding id or displayed number; repeat as needed")
+    scope_parser.add_argument("--budget", type=int, default=4000, help="Context token budget; structure is never cut to fit")
+    scope_parser.add_argument("--output", type=Path, help="Output path; defaults beside the IR")
+    patch_parser = subparsers.add_parser("patch", help=advanced_help)
+    patch_parser.add_argument("action", choices=("template", "validate", "apply"))
+    patch_parser.add_argument("patch", type=Path, nargs="?", help="Path to ui-ir.patch.json for validate/apply")
+    patch_parser.add_argument("--ir", type=Path, help="UI IR; defaults to the cached project IR")
+    patch_parser.add_argument("--context", type=Path, help="Scoped context path recorded by a new template")
+    patch_parser.add_argument("--output", type=Path, help="Template or patched IR output path")
+    mcp_parser = subparsers.add_parser("mcp", help=advanced_help)
+    mcp_parser.add_argument("--name", default="UI Design Workbench", help="Local MCP server name")
     map_parser = subparsers.add_parser("map", help=advanced_help)
     map_parser.add_argument("--output", type=Path, help="Copy ui-graph.json to this explicit path")
     render_parser = subparsers.add_parser("render", help=advanced_help)
@@ -2388,7 +2452,7 @@ def parse_args() -> argparse.Namespace:
     fidelity_parser.add_argument("--format", choices=("json", "markdown"), default="json")
     subparsers.add_parser("doctor", help="Проверить установку и зависимости")
     hidden_commands = {
-        "sync", "context", "map", "render", "validate", "workbench", "diff", "ui-mode",
+        "sync", "context", "scope", "patch", "mcp", "map", "render", "validate", "workbench", "diff", "ui-mode",
         "config", "about", "scenarios", "findings", "proposal", "pack", "unpack", "visual-test", "fidelity",
     }
     subparsers._choices_actions = [
@@ -2432,6 +2496,47 @@ def main() -> int:
             result, paths, _ = ensure_initialized(root, synchronize=False if args.no_sync else None)
             context_path = write_context_variant(paths, args.screen, args.budget, args.changed_only, args.format)
             result = {**result, "contextFile": str(context_path)}
+        elif args.command == "scope":
+            ir_path, ir = load_ir_argument(paths, args.ir)
+            output = (args.output or ir_path.with_name("ui-agent-context.json")).resolve()
+            payload = build_scoped_context(
+                ir,
+                screen_ids=args.screen,
+                finding_ids=args.finding,
+                token_budget=args.budget,
+                ui_ir_file=str(ir_path),
+            )
+            write_scoped_json(output, payload)
+            result = {
+                "version": 1,
+                "status": "prepared",
+                "contextFile": str(output),
+                "scope": payload.get("scope", {}),
+                "contextBudget": payload.get("contextBudget", {}),
+            }
+        elif args.command == "patch":
+            ir_path, ir = load_ir_argument(paths, args.ir)
+            if args.action == "template":
+                output = (args.output or ir_path.with_name("ui-ir.patch.json")).resolve()
+                write_scoped_json(output, patch_template(ir, str(ir_path), str(args.context.resolve()) if args.context else None))
+                result = {"version": 1, "status": "prepared", "patchFile": str(output), "uiIrFile": str(ir_path)}
+            else:
+                if not args.patch:
+                    raise ValueError(f"patch {args.action} requires a ui-ir.patch.json path")
+                patch_payload = read_scoped_json(args.patch.resolve())
+                errors = validate_ir_patch(ir, patch_payload)
+                if errors:
+                    raise ValueError("; ".join(errors))
+                if args.action == "validate":
+                    result = {"version": 1, "status": "pass", "patchFile": str(args.patch.resolve()), "operations": len(patch_payload.get("operations", []))}
+                else:
+                    output = (args.output or ir_path.with_name("ui-ir.patched.json")).resolve()
+                    result = apply_patch_file(ir_path, args.patch, output)
+        elif args.command == "mcp":
+            from uidw_mcp import run_server
+
+            run_server(root, args.name)
+            return 0
         elif args.command == "map":
             result, paths, _ = ensure_initialized(root)
             graph_path = paths["graph"]
@@ -2540,7 +2645,7 @@ def main() -> int:
             result = fidelity_command(ir, args.action, args.identifier, args.output, args.format)
         else:
             result = doctor(root)
-    except (ValueError, TimeoutError, OSError, zipfile.BadZipFile) as exc:
+    except (ValueError, RuntimeError, TimeoutError, OSError, zipfile.BadZipFile) as exc:
         print(f"Ошибка: {exc}", file=sys.stderr)
         if getattr(args, "command", None):
             print(f"Подсказка: `uidw {args.command} --help`; общий маршрут — `uidw help overview`", file=sys.stderr)

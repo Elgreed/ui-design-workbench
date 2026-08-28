@@ -4,7 +4,7 @@ Run this checklist for every final bundle. The detailed commands and report form
 
 ## Coverage and fidelity
 
-- Inventory includes platforms, all screens/logical views/routes/navigation targets, components, tokens, assets, and explicit exclusions. `screenTree` contains every screen exactly once.
+- Inventory includes platforms, all screens/logical views/routes/navigation targets, source-evidenced surfaces, components, tokens, assets, and explicit exclusions. `screenTree` contains every screen exactly once and preserves every discovered `groupPath`/`parentFragment`; a flat list is not complete hierarchy coverage.
 - Coverage is 100% for declared screens, routes, and visible navigation. Component mappings and source/design evidence pass the mode-specific thresholds.
 - The viewport content box matches the target size. Reconstruction reports `exact`, `high`, `approximate`, or `unsupported`; never claim pixel parity without runtime comparison.
 - Platform profile, semantics, target size, states, contrast, accessibility, installed-framework constraints, and input methods are explicit and pass strict validation or remain named blockers.

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Elgreed/ui-design-workbench/schemas/ui-ir.patch.schema.json",
+  "title": "UI Design Workbench sparse IR patch",
+  "type": "object",
+  "required": ["type", "version", "target", "operations"],
+  "properties": {
+    "type": { "const": "ui-design-workbench-ir-patch" },
+    "version": { "const": 1 },
+    "target": {
+      "type": "object",
+      "required": ["uiIrFile"],
+      "properties": {
+        "uiIrFile": { "type": "string", "minLength": 1 },
+        "project": { "type": ["string", "null"] },
+        "baselineHash": { "type": ["string", "null"] },
+        "reviewRevision": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "contextFile": { "type": ["string", "null"] },
+    "operations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["op", "value"],
+        "properties": {
+          "op": { "enum": ["upsert-findings", "upsert-versions", "merge-annotations", "record-verifications"] },
+          "value": { "type": "array" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

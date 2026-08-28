@@ -209,6 +209,56 @@ class RuntimeDiagnosticsTests(unittest.TestCase):
         self.assertEqual(len(untabbable), 4)
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is required for the headless runtime regression")
+    def test_navigation_reachability_uses_compiled_graph_entries(self) -> None:
+        ir = regression_ir()
+        ir["navigationGraph"] = {
+            "version": 1,
+            "source": "scan-evidence",
+            "nodes": [
+                {"screenId": screen["id"], "flowId": screen["route"], "entry": screen["id"].endswith("home")}
+                for screen in ir["screens"]
+            ],
+            "edges": [
+                {"from": "cabinet-home", "to": "cabinet-settings", "kind": "open-logical-view"},
+                {"from": "cabinet-settings", "to": "cabinet-home", "kind": "return-to-parent"},
+                {"from": "admin-home", "to": "admin-jobs", "kind": "open-logical-view"},
+                {"from": "admin-jobs", "to": "admin-home", "kind": "return-to-parent"},
+            ],
+            "flows": [
+                {"id": "/cabinet", "screenIds": ["cabinet-home", "cabinet-settings"], "entryScreenIds": ["cabinet-home"]},
+                {"id": "/admin", "screenIds": ["admin-home", "admin-jobs"], "entryScreenIds": ["admin-home"]},
+            ],
+            "navigationTargets": [],
+            "unresolvedTargets": [],
+        }
+
+        report = self._run_runtime(ir)
+        navigation = next(item for item in report["checks"] if item["scenarioId"] == "navigation-flow")
+
+        self.assertEqual(navigation["result"], "pass")
+        self.assertEqual(navigation["metrics"]["graphSource"], "navigationGraph")
+        self.assertEqual(navigation["metrics"]["assessedFlows"], 2)
+        self.assertEqual(navigation["metrics"]["unreachable"], [])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for the headless runtime regression")
+    def test_zero_runtime_findings_is_a_successful_smoke_result(self) -> None:
+        ir = regression_ir()
+        root_children = ir["nodes"]["admin-home-root"]["children"]
+        root_children.remove("admin-home-small-button")
+        root_children.remove("admin-home-custom-action")
+        del ir["nodes"]["admin-home-small-button"]
+        del ir["nodes"]["admin-home-custom-action"]
+        for node_id, node in ir["nodes"].items():
+            if node_id.endswith("-nav"):
+                node["layout"].update({"width": 260, "height": 44})
+
+        report = self._run_runtime(ir)
+
+        self.assertEqual(report["summary"]["productFail"], 0)
+        self.assertEqual(report["summary"]["productWarning"], 0)
+        self.assertEqual(report["summary"]["toolFail"], 1)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for the headless runtime regression")
     def test_projection_mode_checks_transfer_without_ui_audit(self) -> None:
         ir = regression_ir()
         ir["themes"] = {
@@ -287,6 +337,67 @@ class RuntimeDiagnosticsTests(unittest.TestCase):
         self.assertTrue(any("entryScreenIds must be a unique array" in error for error in errors))
         self.assertTrue(any("navigationFlowId must be a non-empty string" in error for error in errors))
         self.assertTrue(any("requires state" in error for error in errors))
+
+    def test_screen_tree_rejects_flattened_source_hierarchy(self) -> None:
+        ir = regression_ir()
+        for screen in ir["screens"]:
+            screen["source"] = {"file": "review.html", "line": 1, "symbol": screen["id"]}
+            screen["fragment"] = f"#{screen['id']}"
+        ir["discoveredScreens"] = [
+            {"name": "admin-home", "file": "review.html", "fragment": "#admin-home", "groupPath": ["Admin"]},
+            {"name": "admin-jobs", "file": "review.html", "fragment": "#admin-jobs", "groupPath": ["Admin", "Jobs"], "parentFragment": "#admin-home"},
+            {"name": "cabinet-home", "file": "review.html", "fragment": "#cabinet-home", "groupPath": ["Cabinet"]},
+            {"name": "cabinet-settings", "file": "review.html", "fragment": "#cabinet-settings", "groupPath": ["Cabinet"]},
+        ]
+        ir["navigationGraph"] = {
+            "version": 1,
+            "source": "scan-evidence",
+            "nodes": [{"screenId": screen["id"]} for screen in ir["screens"]],
+            "edges": [{"from": "admin-home", "to": "admin-jobs", "kind": "open-logical-view"}],
+            "flows": [], "navigationTargets": [], "unresolvedTargets": [],
+        }
+        ir["screenTree"] = [{
+            "id": "all",
+            "label": "All",
+            "children": [{"screenId": screen["id"], "label": screen["name"]} for screen in ir["screens"]],
+        }]
+
+        errors = validate(ir)
+
+        self.assertTrue(any("does not preserve source groups" in error for error in errors))
+        self.assertTrue(any("flattens nested screen admin-jobs" in error for error in errors))
+
+    def test_screen_tree_accepts_compiled_nested_hierarchy(self) -> None:
+        ir = regression_ir()
+        for screen in ir["screens"]:
+            screen["source"] = {"file": "review.html", "line": 1, "symbol": screen["id"]}
+            screen["fragment"] = f"#{screen['id']}"
+        ir["discoveredScreens"] = [
+            {"name": "admin-home", "file": "review.html", "fragment": "#admin-home", "groupPath": ["Admin"]},
+            {"name": "admin-jobs", "file": "review.html", "fragment": "#admin-jobs", "groupPath": ["Admin", "Jobs"], "parentFragment": "#admin-home"},
+            {"name": "cabinet-home", "file": "review.html", "fragment": "#cabinet-home", "groupPath": ["Cabinet"]},
+            {"name": "cabinet-settings", "file": "review.html", "fragment": "#cabinet-settings", "groupPath": ["Cabinet"]},
+        ]
+        ir["navigationGraph"] = {
+            "version": 1,
+            "source": "scan-evidence",
+            "nodes": [{"screenId": screen["id"]} for screen in ir["screens"]],
+            "edges": [{"from": "admin-home", "to": "admin-jobs", "kind": "open-logical-view"}],
+            "flows": [], "navigationTargets": [], "unresolvedTargets": [],
+        }
+        ir["screenTree"] = [
+            {"id": "cabinet", "label": "Cabinet", "children": [
+                {"screenId": "cabinet-home"}, {"screenId": "cabinet-settings"},
+            ]},
+            {"id": "admin", "label": "Admin", "children": [
+                {"screenId": "admin-home"},
+                {"id": "jobs", "label": "Jobs", "children": [{"screenId": "admin-jobs"}]},
+            ]},
+        ]
+
+        errors = validate(ir)
+
+        self.assertFalse(any("screenTree path" in error or "flattens nested screen" in error for error in errors))
 
 
 if __name__ == "__main__":

@@ -204,6 +204,17 @@ uidw --repo <repo> context --screen <screen-id> --budget 4000
 
 По умолчанию производные данные хранятся в пользовательском кеше ОС, а не в проекте или установленном навыке. Хеши содержимого инвалидируют только изменённые UI-файлы. Для другого каталога задайте `UIDW_CACHE_HOME`.
 
+Для больших ревью не нужно загружать агенту весь IR. `scope` создаёт структурно полный контекст только для выбранных экранов и замечаний, а `patch` принимает только разреженные операции с findings, proposal-версиями, аннотациями и результатами проверки. Замена базового UI через патч запрещена.
+
+```sh
+uidw --repo <repo> scope --ir <review-dir>/ui-ir.json --screen <screen-id> --budget 4000
+uidw --repo <repo> patch template --ir <review-dir>/ui-ir.json --context <review-dir>/ui-agent-context.json
+uidw --repo <repo> patch validate <review-dir>/ui-ir.patch.json --ir <review-dir>/ui-ir.json
+uidw --repo <repo> patch apply <review-dir>/ui-ir.patch.json --ir <review-dir>/ui-ir.json --output <review-dir>/ui-ir.proposed.json
+```
+
+Необязательный локальный MCP предоставляет те же ограниченные операции через `stdio`, без порта и сетевого сервера. Установите дополнение командой `pip install ".[mcp]"`, затем запустите `uidw-mcp --repo <repo>` или `uidw --repo <repo> mcp`. Обычный CLI не зависит от MCP и остаётся полноценным fallback.
+
 ## Опциональные платформенные правила
 
 Режим платформенных правил для обычных UI-задач по умолчанию выключен:
@@ -235,6 +246,8 @@ uidw fidelity explain <node-id-or-evidence-id> --ir <artifacts>/ui-ir.json
 | --- | --- |
 | `uidw doctor` | Проверить установку и необязательные зависимости |
 | `uidw --repo <repo> context --json` | Получить компактный кешированный контекст |
+| `uidw --repo <repo> scope ...` | Создать ограниченный контекст экрана/замечаний для агента |
+| `uidw --repo <repo> patch ...` | Проверить или применить разреженные операции IR |
 | `uidw --repo <repo> workbench ...` | Собрать и проверить HTML-проекцию |
 | `uidw --repo <repo> check --ir <file> --level full` | Повторить проверки переноса без UI/UX-аудита |
 | `uidw --repo <repo> review ...` | Явно запустить UI/UX-ревью |
@@ -281,6 +294,8 @@ uidw --repo <repo> context --json
 ```text
 SKILL.md                    Инструкции для AI-агента
 scripts/uidw.py             Основной CLI
+scripts/uidw_mcp.py         Необязательный локальный MCP через stdio
+scripts/scoped_context.py   Ограниченный контекст и безопасные IR-патчи
 scripts/scan_ui.py          Инкрементальный сканер исходников
 scripts/render_preview.py   Генератор автономного HTML
 scripts/smoke_preview.js    Headless-проверки workbench
@@ -292,4 +307,4 @@ fixtures/golden/            Регрессионные fixtures адаптеро
 
 ## Версия
 
-Текущая версия CLI: `0.3.3`.
+Текущая версия CLI: `0.3.5`.

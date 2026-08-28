@@ -185,7 +185,9 @@ class CliPackagingTests(unittest.TestCase):
     def test_console_entry_and_public_schemas_exist(self) -> None:
         config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         self.assertEqual(config["project"]["scripts"]["uidw"], "uidw:main")
-        for name in ("ui-graph.schema.json", "ui-agent-job.schema.json", "ui-ir.schema.json", "uidw-config.schema.json"):
+        self.assertEqual(config["project"]["scripts"]["uidw-mcp"], "uidw_mcp:main")
+        self.assertIn("mcp", config["project"]["optional-dependencies"])
+        for name in ("ui-graph.schema.json", "ui-agent-job.schema.json", "ui-ir.schema.json", "ui-ir.patch.schema.json", "uidw-config.schema.json"):
             schema = json.loads((ROOT / "schemas" / name).read_text(encoding="utf-8"))
             self.assertIn("$schema", schema)
 
@@ -194,6 +196,7 @@ class CliPackagingTests(unittest.TestCase):
         self.assertLess(len(skill.splitlines()), 120)
         self.assertIn("uidw --repo <repo> context --json", skill)
         self.assertIn("The CLI, not the skill prompt, owns scanning", skill)
+        self.assertIn("ui-ir.patch.json", skill)
         self.assertIn("metadata:", skill)
         self.assertIn("compatibility:", skill)
 
@@ -259,6 +262,8 @@ class CliPackagingTests(unittest.TestCase):
         self.assertNotIn('class="review-launcher-action primary run-review"', generic)
         self.assertNotIn("open-codex-review", generic)
         self.assertNotIn("codex-handoff-panel", generic)
+        self.assertNotIn("uiIr:ir", generic)
+        self.assertIn("ui-ir.patch.json", generic)
 
     def test_portable_bundle_round_trip_has_no_absolute_source_paths(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
