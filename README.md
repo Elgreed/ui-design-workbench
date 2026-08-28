@@ -292,4 +292,4 @@ fixtures/golden/            Adapter and workbench-shell regression fixtures
 
 ## Version
 
-Current CLI version: `0.3.3`.
+Current CLI version: `0.3.4`.

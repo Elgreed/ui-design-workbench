@@ -150,6 +150,54 @@ class IncrementalCacheTests(unittest.TestCase):
         self.assertEqual(set(themes), {"light", "dark"})
         self.assertTrue(themes["dark"]["sourceRefs"])
 
+    def test_scanner_preserves_nested_html_and_generated_js_views(self) -> None:
+        (self.repo / "admin.html").write_text(
+            """
+            <nav class="side-nav">
+              <div class="nav-group-label">System</div>
+              <a href="#processes"><strong>Processes</strong></a>
+              <div class="nav-group-label">Integrations</div>
+              <a href="#mcp"><strong>External sources</strong></a>
+            </nav>
+            <section id="processes" class="panel" data-section="processes"></section>
+            <section id="mcp" class="panel" data-section="mcp">
+              <button data-mcp-tab="overview">Overview</button>
+              <button data-mcp-tab="tools">Tools</button>
+              <section role="tabpanel" data-mcp-panel="overview"></section>
+              <section role="tabpanel" data-mcp-panel="tools"></section>
+            </section>
+            """,
+            encoding="utf-8",
+        )
+        (self.repo / "admin_processes.js").write_text(
+            """
+            document.querySelector('#processes').innerHTML = `
+              ${[['overview', 'Overview'], ['jobs', 'Jobs'], ['errors', 'Errors']]
+                .map(([id, label]) => `<button data-queue-detail-tab="${id}">${label}</button>`).join('')}`;
+            """,
+            encoding="utf-8",
+        )
+
+        uidw.initialize(self.repo)
+        paths = uidw.state_paths(self.repo)
+        scan = uidw.read_json(paths["scan"], {})
+        nested = {item["name"]: item for item in scan["screens"] if item.get("parentFragment")}
+        self.assertEqual(
+            set(nested),
+            {"McpOverviewView", "McpToolsView", "ProcessesOverviewView", "ProcessesJobsView", "ProcessesErrorsView"},
+        )
+        self.assertEqual(nested["McpToolsView"]["groupPath"], ["Integrations", "External sources"])
+        self.assertEqual(nested["ProcessesJobsView"]["groupPath"], ["System", "Processes"])
+
+        ir = uidw.read_json(paths["ir"], {})
+        discovered = {item["name"] for item in ir["discoveredScreens"]}
+        self.assertTrue(set(nested).issubset(discovered))
+
+        def depth(items: list[dict], level: int = 0) -> int:
+            return max([level, *(depth(item.get("children", []), level + 1) for item in items if item.get("children"))])
+
+        self.assertGreaterEqual(depth(ir["screenTree"]), 3)
+
     def test_ui_mode_is_opt_in_and_does_not_rescan_clean_sources(self) -> None:
         uidw.initialize(self.repo)
         with mock.patch.object(uidw, "analyze_file", wraps=uidw.analyze_file) as analyze:

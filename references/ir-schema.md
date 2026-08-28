@@ -313,6 +313,8 @@ For a completed expert audit, `scope.interactions`, `scope.uxLenses`, `interacti
 
 `screenTree` is required. Group nodes contain `id`, `label`, and non-empty `children`; leaf nodes contain `screenId` and an optional shorter `label`. Every screen must occur exactly once. Use as many group levels as the real information architecture requires, normally product area → navigation group → screen.
 
+For web inventories, each `discoveredScreens` item may also carry `label`, `groupPath`, `parentFragment`, and `sourceKind`. `groupPath` contains the visible navigation ancestors, `parentFragment` links a nested tab or detail view to its owning section, and `sourceKind` identifies whether the evidence came from an HTML section, an HTML tab panel, or a deterministic JS-generated tab set. These fields are scan evidence: review builders should preserve them when refining `screenTree`, not collapse nested logical views back to the source-file level.
+
 The workbench renders this tree in the left sidebar, opens ancestors of the active screen, highlights the active leaf in blue, shows its full breadcrumb in the toolbar, and lets the reviewer hide or restore the entire sidebar. Hovering or focusing a `navigate` control previews its destination in amber and shows the destination breadcrumb, so current and prospective screens remain visually distinct. When the scan only knows files and platforms, it creates a provisional platform → source file → screen tree; refine that tree from actual navigation before review.
 
 ## Node types

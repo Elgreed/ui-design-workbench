@@ -26,8 +26,9 @@ EXCLUDED_DIRS = {
     "build", "dist", "out", "target", "node_modules", "Pods", "DerivedData",
     "vendor", "coverage", ".codegraph", ".worktrees", ".claude", ".lavish", ".codex",
     ".agents", ".cursor", ".gemini", ".opencode", ".ui-design-workbench",
+    ".superpowers",
 }
-SCANNER_VERSION = 5
+SCANNER_VERSION = 7
 SOURCE_EXTENSIONS = {
     ".kt", ".kts", ".xml", ".swift", ".storyboard", ".xib", ".dart",
     ".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".html",
@@ -125,6 +126,8 @@ def detect_platforms(path: Path, text: str) -> list[str]:
             found.append("react-native")
         elif re.search(r"\b(import|require).*react|<[A-Z][A-Za-z0-9_.]*", text):
             found.append("react-web")
+        elif any(marker in text for marker in ("document.querySelector", "querySelectorAll(", ".innerHTML", "getElementById(")):
+            found.append("web")
     if suffix == ".json" and path.name.lower() in {"package.json", "package-lock.json"}:
         if "react-native-windows" in lower:
             found.append("react-native-windows")
@@ -241,6 +244,25 @@ HTML_TAB_PATTERN = re.compile(
     r"<button\b(?P<attrs>[^>]*\bid\s*=\s*[\"']tab-([^\"']+)[\"'][^>]*)>(?P<body>.*?)</button>",
     re.I | re.S,
 )
+HTML_NAV_GROUP_OR_LINK_PATTERN = re.compile(
+    r"<div\b(?P<group_attrs>[^>]*\bclass\s*=\s*[\"'][^\"']*\bnav-group-label\b[^\"']*[\"'][^>]*)>(?P<group_body>.*?)</div>"
+    r"|<a\b(?P<link_attrs>[^>]*\bhref\s*=\s*[\"']#[^\"']+[\"'][^>]*)>(?P<link_body>.*?)</a>",
+    re.I | re.S,
+)
+HTML_DATA_TAB_PATTERN = re.compile(
+    r"<button\b(?P<attrs>[^>]*\bdata-(?P<family>[A-Za-z0-9_-]+)-tab\s*=\s*[\"'](?P<value>[^\"']+)[\"'][^>]*)>(?P<body>.*?)</button>",
+    re.I | re.S,
+)
+HTML_DATA_PANEL_PATTERN = re.compile(
+    r"<section\b(?P<attrs>[^>]*\bdata-(?P<family>[A-Za-z0-9_-]+)-panel\s*=\s*[\"'](?P<value>[^\"']+)[\"'][^>]*)>",
+    re.I,
+)
+JS_TAB_ARRAY_PATTERN = re.compile(
+    r"(?P<array>\[(?:\s*\[\s*[\"'][^\"']+[\"']\s*,\s*[\"'][^\"']+[\"']\s*\]\s*,?){2,}\s*\])"
+    r"(?P<tail>.{0,900}?data-(?P<family>[A-Za-z0-9_-]+)-tab\s*=)",
+    re.I | re.S,
+)
+JS_TAB_ITEM_PATTERN = re.compile(r"\[\s*[\"'](?P<id>[^\"']+)[\"']\s*,\s*[\"'](?P<label>[^\"']+)[\"']\s*\]")
 
 
 def html_attr(attrs: str, name: str) -> str:
@@ -250,6 +272,91 @@ def html_attr(attrs: str, name: str) -> str:
 
 def visible_html_text(value: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", value)).strip()
+
+
+def view_name(value: str) -> str:
+    return "".join(part.capitalize() for part in re.split(r"[^A-Za-z0-9]+", value) if part) + "View"
+
+
+def html_navigation_groups(text: str) -> dict[str, dict[str, str]]:
+    """Map hash destinations to their visible label and nearest sidebar group."""
+    result: dict[str, dict[str, str]] = {}
+    current_group = ""
+    for match in HTML_NAV_GROUP_OR_LINK_PATTERN.finditer(text):
+        if match.group("group_attrs") is not None:
+            current_group = visible_html_text(match.group("group_body") or "")
+            continue
+        attrs = match.group("link_attrs") or ""
+        href = html_attr(attrs, "href")
+        if href:
+            result[href] = {
+                "label": visible_html_text(match.group("link_body") or "") or href,
+                "group": current_group,
+            }
+    return result
+
+
+def html_data_tab_candidates(source: str, text: str, navigation: dict[str, dict[str, str]]) -> list[dict[str, Any]]:
+    """Discover source-backed tab panels that represent persistent logical views."""
+    panels = {
+        (match.group("family").lower(), match.group("value")): match
+        for match in HTML_DATA_PANEL_PATTERN.finditer(text)
+    }
+    candidates: list[dict[str, Any]] = []
+    for match in HTML_DATA_TAB_PATTERN.finditer(text):
+        family = match.group("family").lower()
+        value = match.group("value")
+        panel = panels.get((family, value))
+        if panel is None:
+            continue
+        parent_fragment = f"#{family.split('-')[0]}"
+        parent_nav = navigation.get(parent_fragment, {})
+        label = visible_html_text(match.group("body")) or value
+        group_path = [item for item in (parent_nav.get("group", ""), parent_nav.get("label", "")) if item]
+        candidates.append({
+            "name": view_name(f"{family}-{value}"),
+            "label": label,
+            "file": source,
+            "line": line_number(text, panel.start()),
+            "platform": "web",
+            "confidence": "high",
+            "logicalView": True,
+            "fragment": f"{parent_fragment}/{value}",
+            "selector": f'section[data-{family}-panel="{value}"]',
+            "parentFragment": parent_fragment,
+            "groupPath": group_path,
+            "sourceKind": "html-tab-panel",
+        })
+    return candidates
+
+
+def js_data_tab_candidates(source: str, path: Path, text: str) -> list[dict[str, Any]]:
+    """Discover deterministic tab sets rendered from literal JS tuple arrays."""
+    candidates: list[dict[str, Any]] = []
+    source_hint = re.sub(r"^(?:dashboard|admin|cabinet)[_-]?", "", path.stem, flags=re.I)
+    for match in JS_TAB_ARRAY_PATTERN.finditer(text):
+        family = match.group("family").lower()
+        parent_hint = family.split("-")[0] or source_hint
+        if parent_hint in {"queue", "detail"} and source_hint:
+            parent_hint = source_hint.split("_")[0].split("-")[0]
+        parent_fragment = f"#{parent_hint}"
+        for item in JS_TAB_ITEM_PATTERN.finditer(match.group("array")):
+            value = item.group("id")
+            candidates.append({
+                "name": view_name(f"{parent_hint}-{value}"),
+                "label": item.group("label"),
+                "file": source,
+                "line": line_number(text, match.start() + item.start()),
+                "platform": "web",
+                "confidence": "high",
+                "logicalView": True,
+                "fragment": f"{parent_fragment}/{value}",
+                "selector": f'[data-{family}-tab="{value}"]',
+                "parentFragment": parent_fragment,
+                "groupPath": [],
+                "sourceKind": "js-generated-tab",
+            })
+    return candidates
 
 
 def extract_theme_candidates(path: Path, text: str, source: str) -> list[dict[str, Any]]:
@@ -326,7 +433,10 @@ def extract_routes(text: str, source: str) -> list[dict[str, Any]]:
         return unique_dicts(routes, ("route", "file", "line"))[:100]
     for pattern in ROUTE_PATTERNS:
         for match in pattern.finditer(text):
-            routes.append({"route": match.group(1), "file": source, "line": line_number(text, match.start())})
+            route = match.group(1).strip()
+            if not route.startswith(("/", "#")):
+                continue
+            routes.append({"route": route, "file": source, "line": line_number(text, match.start())})
     return unique_dicts(routes, ("route", "file", "line"))[:100]
 
 
@@ -352,6 +462,7 @@ def screen_candidates(source: str, path: Path, text: str, platforms: list[str], 
             "confidence": "high",
         })
     if path.suffix.lower() in {".html", ".htm"}:
+        navigation = html_navigation_groups(text)
         for match in HTML_SECTION_PATTERN.finditer(text):
             attrs = match.group("attrs")
             section_id = html_attr(attrs, "id")
@@ -360,8 +471,10 @@ def screen_candidates(source: str, path: Path, text: str, platforms: list[str], 
             if not section_id or not (data_section or {"panel", "view", "screen"} & classes):
                 continue
             label = data_section or section_id
+            nav_item = navigation.get(f"#{section_id}", {})
             candidates.append({
-                "name": "".join(part.capitalize() for part in re.split(r"[^A-Za-z0-9]+", label) if part) + "View",
+                "name": view_name(label),
+                "label": nav_item.get("label") or label,
                 "file": source,
                 "line": line_number(text, match.start()),
                 "platform": "web",
@@ -369,7 +482,12 @@ def screen_candidates(source: str, path: Path, text: str, platforms: list[str], 
                 "logicalView": True,
                 "fragment": f"#{section_id}",
                 "selector": f"section#{section_id}",
+                "groupPath": [nav_item["group"]] if nav_item.get("group") else [],
+                "sourceKind": "html-section",
             })
+        candidates.extend(html_data_tab_candidates(source, text, navigation))
+    if path.suffix.lower() in {".js", ".jsx", ".ts", ".tsx"}:
+        candidates.extend(js_data_tab_candidates(source, path, text))
     return unique_dicts(candidates, ("name", "file", "line"))
 
 
@@ -534,6 +652,19 @@ def assemble_scan(root: Path, file_records: Iterable[dict[str, Any]]) -> dict[st
     role_order = {"navigation": 0, "theme": 1, "screen": 2, "component": 3, "ui-source": 4}
     ui_files.sort(key=lambda item: (role_order.get(item["role"], 9), item["path"]))
     screens = unique_dicts(screens, ("name", "file", "line"))
+    by_fragment: dict[str, list[dict[str, Any]]] = {}
+    for candidate in screens:
+        if candidate.get("fragment"):
+            by_fragment.setdefault(str(candidate["fragment"]), []).append(candidate)
+    for item in screens:
+        parent_options = by_fragment.get(str(item.get("parentFragment") or ""), [])
+        same_file = [candidate for candidate in parent_options if candidate.get("file") == item.get("file")]
+        parent = same_file[0] if len(same_file) == 1 else parent_options[0] if len(parent_options) == 1 else None
+        if parent is None:
+            continue
+        inherited = [str(value) for value in parent.get("groupPath", []) if value]
+        parent_label = str(parent.get("label") or parent.get("name") or "")
+        item["groupPath"] = list(dict.fromkeys([*inherited, parent_label, *item.get("groupPath", [])]))
     routes = unique_dicts(routes, ("route", "file", "line"))
     components = unique_dicts(components, ("id",))
     navigation_targets = unique_dicts(navigation_targets, ("target", "file", "line"))
@@ -686,6 +817,9 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
             "platform": target_family(candidate.get("platform", "")) or candidate.get("platform", "unknown"),
             "fragment": candidate.get("fragment", ""),
             "logicalView": candidate.get("logicalView", False),
+            "label": candidate.get("label", candidate.get("name", screen_id)),
+            "groupPath": candidate.get("groupPath", []),
+            "parentFragment": candidate.get("parentFragment", ""),
         })
         root_provenance = {}
         title_provenance = {}
@@ -714,8 +848,44 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
         nodes[inventory_id] = {"type": "custom", "text": "The AI agent should inspect this source file and replace this inventory placeholder with translated UI nodes.", "component": "UntranslatedSource", "source": source, "confidence": "unsupported"}
 
     if translated.screens:
-        screens = translated.screens
-        nodes = translated.nodes
+        inventory_screens = screens
+        inventory_nodes = nodes
+        logical_files = {
+            str(candidate.get("file") or "")
+            for candidate in raw_scan_screens
+            if candidate.get("logicalView")
+        }
+        screens = [
+            item for item in translated.screens
+            if str(item.get("source", {}).get("file") or "") not in logical_files
+        ]
+        nodes = {}
+        for screen in screens:
+            stack = [str(screen.get("root") or "")]
+            while stack:
+                node_id = stack.pop()
+                if not node_id or node_id in nodes or node_id not in translated.nodes:
+                    continue
+                node = translated.nodes[node_id]
+                nodes[node_id] = node
+                stack.extend(str(child) for child in node.get("children", []))
+        represented = {
+            (str(item.get("source", {}).get("file") or ""), str(item.get("fragment") or ""))
+            for item in screens
+        }
+        for inventory in inventory_screens:
+            key = (str(inventory.get("source", {}).get("file") or ""), str(inventory.get("fragment") or ""))
+            if key in represented:
+                continue
+            screens.append(inventory)
+            stack = [str(inventory.get("root") or "")]
+            while stack:
+                node_id = stack.pop()
+                if not node_id or node_id in nodes or node_id not in inventory_nodes:
+                    continue
+                node = inventory_nodes[node_id]
+                nodes[node_id] = node
+                stack.extend(str(child) for child in node.get("children", []))
 
     detected_platforms = scan_result.get("detectedPlatforms", [])
     tv = any(platform.startswith("android-tv") for platform in detected_platforms)
@@ -737,29 +907,45 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
         for family in target_platforms
         if family in default_profiles
     }
-    tree_groups: dict[str, dict[str, list[dict[str, str]]]] = {}
+    raw_by_location = {
+        (str(item.get("file") or ""), str(item.get("fragment") or "")): item
+        for item in raw_scan_screens
+    }
+    tree_groups: dict[str, dict[str, Any]] = {}
     for screen in screens:
         platform_label = str(screen.get("platform") or "unknown")
         source_file = str(screen.get("source", {}).get("file") or "inventory")
-        source_label = Path(source_file).stem or "Screens"
-        tree_groups.setdefault(platform_label, {}).setdefault(source_label, []).append({
+        metadata = raw_by_location.get((source_file, str(screen.get("fragment") or "")), {})
+        group_path = [str(value) for value in metadata.get("groupPath", screen.get("groupPath", [])) if value]
+        if not group_path:
+            group_path = [Path(source_file).stem or "Screens"]
+        root = tree_groups.setdefault(platform_label, {"children": {}, "leaves": []})
+        current = root
+        for label in group_path:
+            current = current["children"].setdefault(label, {"children": {}, "leaves": []})
+        current["leaves"].append({
             "screenId": str(screen["id"]),
-            "label": str(screen["name"]),
+            "label": str(metadata.get("label") or screen.get("label") or screen["name"]),
         })
+
+    def tree_children(branch: dict[str, Any], prefix: str) -> list[dict[str, Any]]:
+        groups = [
+            {
+                "id": f"group-{slug(prefix + '-' + label, 'screens')}",
+                "label": label,
+                "children": tree_children(child, f"{prefix}-{label}"),
+            }
+            for label, child in branch["children"].items()
+        ]
+        return [*groups, *branch["leaves"]]
+
     screen_tree = [
         {
             "id": f"platform-{slug(platform_label, 'unknown')}",
             "label": platform_label,
-            "children": [
-                {
-                    "id": f"source-{slug(platform_label + '-' + source_label, 'screens')}",
-                    "label": source_label,
-                    "children": children,
-                }
-                for source_label, children in source_groups.items()
-            ],
+            "children": tree_children(branch, platform_label),
         }
-        for platform_label, source_groups in tree_groups.items()
+        for platform_label, branch in tree_groups.items()
     ]
     translated_themes = {str(item.get("id")): item for item in translated.themes if isinstance(item, dict) and item.get("id")}
     theme_items: list[dict[str, Any]] = []
@@ -798,8 +984,12 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
                 "logicalView": candidate.get("logicalView", False),
                 "fragment": candidate.get("fragment", ""),
                 "selector": candidate.get("selector", ""),
+                "label": candidate.get("label", candidate.get("name", "")),
+                "groupPath": candidate.get("groupPath", []),
+                "parentFragment": candidate.get("parentFragment", ""),
+                "sourceKind": candidate.get("sourceKind", ""),
             }
-            for candidate in (translated.screens if translated.screens else raw_scan_screens)
+            for candidate in (raw_scan_screens if raw_scan_screens else translated.screens)
         ],
         "discoveredRoutes": scan_result.get("routes", []),
         "discoveredNavigationTargets": scan_result.get("navigationTargets", []),

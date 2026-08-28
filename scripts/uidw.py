@@ -41,8 +41,8 @@ from scan_ui import (
 )
 
 
-CACHE_VERSION = 6
-CLI_VERSION = "0.3.3"
+CACHE_VERSION = 7
+CLI_VERSION = "0.3.4"
 CONFIG_VERSION = 5
 STATE_DIR_NAME = ".ui-design-workbench"
 CONFIG_NAME = "config.json"
