@@ -1,0 +1,8 @@
+{
+  "adapter": "compose",
+  "screens": ["home-screen"],
+  "nodeTypes": ["button", "container", "text"],
+  "tokens": {"spacing.content_padding": "16px"},
+  "minimumNodes": 4,
+  "requiredProperty": "layout.width"
+}

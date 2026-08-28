@@ -33,7 +33,7 @@ Use JSON with `version: 1`. The renderer tolerates omitted optional fields but e
     {"target": "#processes", "label": "Processes", "file": "admin.html", "line": 47}
   ],
   "viewport": {"width": 390, "height": 844, "device": "phone", "frame": false, "background": "$colors.surface"},
-  "fidelity": {"status": "translated", "sourceDerived": true},
+  "fidelity": {"schemaVersion": "0.3", "status": "translated", "sourceDerived": true, "adapters": ["web", "compose"], "unsupported": []},
   "fonts": [
     {"family": "Project Sans", "asset": "assets/fonts/project-sans.woff2", "weight": 400, "style": "normal"}
   ],
@@ -42,6 +42,20 @@ Use JSON with `version: 1`. The renderer tolerates omitted optional fields but e
     "spacing": {"sm": 8, "md": 16},
     "radii": {"md": 12},
     "typography": {"body": {"fontFamily": "Roboto", "fontSize": 16, "lineHeight": 24}}
+  },
+  "themes": {
+    "defaultThemeId": "light",
+    "items": [
+      {"id": "light", "label": "Light", "kind": "light", "sourceRefs": []},
+      {
+        "id": "dark",
+        "label": "Dark",
+        "kind": "dark",
+        "sourceRefs": [{"file": "ui/theme/Theme.kt", "line": 18, "evidence": "darkColorScheme"}],
+        "tokenOverrides": {"colors": {"surface": "#121212", "onSurface": "#F4F4F4"}},
+        "nodeOverrides": {}
+      }
+    ]
   },
   "componentCatalog": {
     "status": "ready",
@@ -133,9 +147,21 @@ Versioned proposals, expert-audit findings, and annotations live under `review`;
 
 ## Screen scenarios and mock data
 
-Use `screen.scenarios` for complete, meaningful screen states and `scenarioFixtures` for reusable deterministic data patches. A scenario may contain `fixtureRef`, sparse `nodeOverrides`, and `nodeStates`; the scenario patch is applied after the selected review version. `defaultScenarioId` may select a populated fixture when the preview opens. The single-screen and prototype views show a scenario switcher only when the current screen declares at least one extra scenario; the States view then lays all declared scenarios out together.
+Use `screen.scenarios` for complete, meaningful screen states and `scenarioFixtures` for reusable deterministic data patches. A scenario may contain `fixtureRef`, sparse `nodeOverrides`, and `nodeStates`; the scenario patch is applied after the selected review version. `defaultScenarioId` may select a populated fixture when the preview opens. The single-screen and prototype views show a scenario switcher only when the current screen declares at least one extra scenario; Variants can then lay all declared scenarios out together.
 
-Do not stamp a universal `loading/error/success` trio onto every screen. Derive scenarios from source branches and the screen task: a queue may need populated, empty, paused, and failed; an import flow may need initial, file-selected, importing, success, and invalid-file; settings may need clean, dirty, validation-error, and saved. Keep only the states needed by the requested `mockData.mode`: `representative` means one realistic populated fixture plus critical alternate states, while `exhaustive` adds evidenced boundary cases. Generated values must be deterministic, visibly synthetic, locale-appropriate, and free of real user data or secrets.
+Do not stamp a universal `loading/error/success` trio onto every screen. Derive scenarios from source branches and the screen task: a queue may need populated, empty, paused, and failed; an import flow may need initial, file-selected, importing, success, and invalid-file; settings may need clean, dirty, validation-error, and saved. Low detail creates minimal visible content, medium creates representative content plus critical alternate states, and high adds expanded data plus source-evidenced boundary states. Generated values must be deterministic, visibly synthetic, locale-appropriate, and free of real user data or secrets.
+
+## Themes and variant boards
+
+Themes are independent from screen scenarios. `themes.defaultThemeId` selects the ordinary preview, while each item may contain sparse `tokenOverrides` and `nodeOverrides`. The renderer applies theme overrides before proposal, scenario, and local component-state overrides. In reconstruct mode, `light` is the only implicit fallback; every dark or custom theme requires a non-empty `sourceRefs` trail. Never invent a dark theme merely to fill a comparison grid.
+
+Single screen and Prototype expose a theme selector only when more than one theme was found. Variants organizes the canvas without mixing dimensions:
+
+- `themes`: one selected scenario across all detected themes;
+- `states`: all scenarios in one selected theme;
+- `matrix`: separate theme sections, with the states grouped inside each section; available only when both dimensions have alternatives.
+
+The active theme is preserved in `?theme=<id>` and the Variants grouping in `?axis=themes|states|matrix`.
 
 ## Platform families and profiles
 
@@ -265,7 +291,13 @@ An evidence-based review uses this shape:
           "effort": "medium",
           "proposalVersionId": "proposal-recovery",
           "decisionId": "decision-project-error-recovery",
-          "status": "open"
+          "status": "open",
+          "verification": {
+            "status": "verified",
+            "result": "pass",
+            "checkedAt": "2026-08-28T12:00:00Z",
+            "checks": ["targeted-project-test", "incremental-ui-sync"]
+          }
         }
       ]
     }
@@ -273,7 +305,7 @@ An evidence-based review uses this shape:
 }
 ```
 
-Finding IDs are stable across iterations. `reviewVersionId` identifies the immutable version that was actually reviewed and defaults to `review.baselineVersion`; switching Before/After never changes it. Finding markers render only on that reviewed version, so proposal/After views cannot inherit baseline errors. `severity` is `blocker`, `high`, `medium`, or `low`; `confidence` is `high`, `medium`, or `low`; `effort` is `small`, `medium`, or `large`. Each finding needs at least one evidence entry with `type`, `ref`, and `note`. Use `systemic: true` plus `instances` for one repeated root cause. A finding links to `proposalVersionId` or provides `noProposalReason`. Correction versions may list `findingIds` so the workbench can open the applicable comparison directly. They separately list corrections in `resolvedFindingIds`, but resolution becomes final only after targeted verification or implementation updates the finding status. Do not infer resolution merely from `findingIds`.
+Finding IDs are stable across iterations. `reviewVersionId` identifies the immutable version that was actually reviewed and defaults to `review.baselineVersion`; switching original/new versions never changes it. Finding markers render only on that reviewed version, so proposal views cannot inherit baseline errors. `severity` is `blocker`, `high`, `medium`, or `low`; `confidence` is `high`, `medium`, or `low`; `effort` is `small`, `medium`, or `large`. Each finding needs at least one evidence entry with `type`, `ref`, and `note`. Use `systemic: true` plus `instances` for one repeated root cause. A finding links to `proposalVersionId` or provides `noProposalReason`. Correction versions may list `findingIds` so the workbench can open the applicable comparison directly. Their `resolvedFindingIds` means only that the proposal visually addresses those baseline findings. Actual completion requires a finding-level `verification` with `result: pass` or `status: verified`, populated only after source implementation and targeted checks. Legacy `status: resolved`, proposal approval, `findingIds`, and `resolvedFindingIds` alone never prove application or verification.
 
 For a completed expert audit, `scope.interactions`, `scope.uxLenses`, `interactionChecks`, `layoutChecks`, and `uxAssessment` are required. Interaction and layout results are `pass`, `fail`, or `not-run`; `complete` audits cannot include `not-run`. Every failed interaction/layout entry needs non-empty `findingIds`, and every referenced ID must exist in `audit.findings`. `layoutChecks.kind` must cover `typography`, `sibling-alignment`, `control-padding`, `text-containment`, and `icon-label-optics`. UX statuses are `pass`, `finding`, or `gap`; `finding` requires valid `findingIds`. Use `gap` only when `validationGaps` explains the missing evidence.
 
@@ -313,6 +345,24 @@ Token references start with `$`, for example `$colors.primary` or `$spacing.md`.
 
 ## Fidelity and provenance
 
+Fidelity Core v0.3 uses property-level provenance rather than only a node-level `source`. A reconstructed node includes entries such as:
+
+```json
+"provenance": {
+  "layout.padding": {
+    "id": "evidence-4e70…",
+    "kind": "source",
+    "file": "src/App.css",
+    "line": 18,
+    "expression": "padding: var(--space-md)",
+    "adapter": "web",
+    "confidence": "exact"
+  }
+}
+```
+
+The path must exist on the node. Strict reconstructed properties without evidence fail validation. Token objects may retain `{value, source, adapter}`; `$group.name` aliases are resolved with missing-reference and cycle diagnostics. `review.baselineHash` seals screens, tree, nodes, tokens, themes, and scenario fixtures, while proposal `nodeOverrides` stay outside that hash.
+
 Use one of:
 
 - `exact`: literal asset, token, text, or mapped component renderer.
@@ -324,7 +374,7 @@ Meaningful nodes should carry `source.file`, `source.line`, `source.symbol`, and
 
 When a project component catalog is enforced, nodes using catalogued components also carry `componentRef`. The catalog entry must be inspected and mapped before review.
 
-The scanner emits `fidelity.status: inventory`. In `reconstruct`, change it to `translated` with `sourceDerived: true` only after replacing placeholders. In `generate` or `redesign`, use `fidelity.status: designed` and provide the `design` metadata described in [design-modes.md](design-modes.md). The renderer refuses unsupported placeholders, incomplete appearance, weak provenance/evidence, missing platform profiles, missing semantics, unexplained custom controls, and undersized interactive targets. If a leaf intentionally inherits all presentation, set `inheritsAppearance: true`; use `inheritsTypography: true` only when a control's typography is inherited but its geometry and surface are explicit. `--allow-draft` exists only for diagnostics.
+The scanner emits `fidelity.status: translated` only for adapter-supported source and otherwise keeps explicit inventory placeholders. In `reconstruct`, set `sourceDerived: true` only after replacing placeholders. In `generate` or `redesign`, use `fidelity.status: designed` and provide the `design` metadata described in [design-modes.md](design-modes.md). The renderer refuses unsupported placeholders, incomplete appearance, weak provenance/evidence, missing platform profiles, missing semantics, unexplained custom controls, and undersized interactive targets. If a leaf intentionally inherits all presentation, set `inheritsAppearance: true`; use `inheritsTypography: true` only when a control's typography is inherited but its geometry and surface are explicit. `--allow-draft` exists only for diagnostics.
 
 Generated/redesigned interactive nodes use `standardRef` or per-platform `standardRefs`, plus `semantics.role`, `semantics.label`, and `semantics.targetSize`. Use `decisionId` only when it matches a reasoned entry in `design.decisions`. See [platform-standards.md](platform-standards.md).
 
@@ -339,6 +389,7 @@ The renderer automatically provides:
 - `All screens`: every screen rendered simultaneously as a non-interactive overview;
 - `Prototype`: the selected screen with navigation and state actions enabled;
 - `Single screen`: the selected screen with navigation frozen for focused review;
+- `Variants`: the selected screen grouped by detected themes, meaningful states, or a separated theme/state matrix;
 - `Before / After`: version comparison in split or overlay form;
 - `Interact` / `Inspect` / `Comment`: an independent switch for clicks, provenance inspection, or node-anchored annotations.
 

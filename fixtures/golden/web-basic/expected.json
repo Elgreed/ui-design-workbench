@@ -1,0 +1,11 @@
+{
+  "adapter": "web",
+  "screens": ["index"],
+  "nodeTypes": ["button", "card", "container", "list", "text"],
+  "tokens": {
+    "colors.brand_color": "#2563eb",
+    "radii.radius_md": "8px",
+    "spacing.space_md": "16px"
+  },
+  "requiredProvenance": ["index-h1-6:text", "index-h1-6:style.fontSize", "index-button-7:style.background"]
+}

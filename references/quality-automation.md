@@ -1,6 +1,6 @@
 # Quality automation
 
-Use these deterministic gates for every final reconstruction, generation, redesign, or expert-review bundle. They inspect IR and standalone HTML only; they never run the target application.
+Use these deterministic gates for every final reconstruction, generation, redesign, or expert-review bundle. They inspect IR and standalone HTML only; they never run the target application. Ordinary `workbench` and `check` runs use **projection** mode: they verify evidence transfer and workbench behavior without judging the product UI. UI/UX heuristics run only in **review** mode after an explicit review request.
 
 ## 1. Platform profile
 
@@ -17,10 +17,10 @@ Fix a blocked report in IR. A `project` profile is valid only with a non-empty r
 Run after the final IR update and before delivery:
 
 ```powershell
-python <skill-dir>/scripts/coverage_report.py <review-dir>/ui-ir.json --output <review-dir>/ui-coverage.json --markdown <review-dir>/ui-coverage.md --strict
+python <skill-dir>/scripts/coverage_report.py <review-dir>/ui-ir.json --mode projection --output <review-dir>/ui-coverage.json --markdown <review-dir>/ui-coverage.md --strict
 ```
 
-The report gates screen-tree uniqueness, discovered screens/routes/navigation, component mappings, appearance, profiles, and mode-specific source or design evidence. Generate/redesign additionally gate semantics, standards, target size, contrast, and required state coverage. Do not average away a failed category; every gate must pass or remain an explicit delivery blocker.
+Projection mode gates screen-tree uniqueness, discovered screens/routes/navigation, component mappings, appearance, profiles, and source/evidence transfer. It never gates target size, contrast, spacing, accessibility, or other UI-quality heuristics. Use `--mode review` only after an explicit review request; for generated/redesigned review artifacts it additionally gates semantics, standards, target size, contrast, and required state coverage. Do not average away a failed category; every active gate must pass or remain an explicit delivery blocker.
 
 ## 3. Interaction scenario plan
 
@@ -37,7 +37,7 @@ The plan covers single, repeated, reverse, chained, and boundary actions plus wo
 Capture both pixels and DOM geometry at the approved viewport:
 
 ```powershell
-node <skill-dir>/scripts/smoke_preview.js <review-dir>/ui-preview.html --output <review-dir>/ui-diagnostics.json --screenshot <review-dir>/candidate.png --geometry-output <review-dir>/candidate-geometry.json --capture-view overview --capture-screen home --capture-left-panel open --capture-right-panel open --capture-inspector-tab review --viewport-width 1440 --viewport-height 960
+node <skill-dir>/scripts/smoke_preview.js <review-dir>/ui-preview.html --mode projection --output <review-dir>/ui-diagnostics.json --screenshot <review-dir>/candidate.png --geometry-output <review-dir>/candidate-geometry.json --capture-view overview --capture-screen home --capture-left-panel open --capture-right-panel open --capture-inspector-tab review --viewport-width 1440 --viewport-height 960
 ```
 
 Use `--capture-review-section summary|problems|changes` to capture each review workspace deterministically. A production reviewer workbench needs at least Summary at primary and compact widths plus Problems and Changes after representative decisions or imports.
@@ -50,7 +50,7 @@ The smoke workflow must also validate the portable agent handoff without launchi
 python <skill-dir>/scripts/visual_regression.py --baseline <baseline.png> --candidate <candidate.png> --baseline-geometry <baseline-geometry.json> --candidate-geometry <candidate-geometry.json> --output <visual-regression.json> --diff-image <visual-diff.png> --strict
 ```
 
-Pixel thresholds tolerate small antialiasing differences; geometry defaults to a one-CSS-pixel tolerance and always fails new overlaps, missing elements, or changed visibility/overflow. Never replace an approved baseline automatically. Inspect every diff: accept intentional changes through a new review version; otherwise create a finding or record a justified validation gap.
+Pixel thresholds tolerate small antialiasing differences; geometry defaults to a one-CSS-pixel tolerance for the generated workbench shell and reconstruction mapping. Never treat source-authored spacing, wrapping, contrast, target size, or accessibility as a product problem in projection mode. Never replace an approved baseline automatically. A product finding may be created only during an explicit review.
 
 Pixel comparison uses Pillow (`PIL`). If the default Python runtime lacks it, use the bundled workspace Python runtime that provides Pillow; do not silently skip the regression gate.
 

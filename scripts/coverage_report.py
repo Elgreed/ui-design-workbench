@@ -21,7 +21,9 @@ def gate(gate_id: str, label: str, passed: bool, actual: Any, expected: Any, det
     return value
 
 
-def build_report(ir: dict[str, Any]) -> dict[str, Any]:
+def build_report(ir: dict[str, Any], purpose: str = "projection") -> dict[str, Any]:
+    if purpose not in {"projection", "review"}:
+        raise ValueError(f"Unknown coverage purpose: {purpose}")
     audit = fidelity_audit(ir)
     profiles = validate_profiles(ir)
     screen_ids = [str(item.get("id")) for item in ir.get("screens", []) if item.get("id")]
@@ -31,7 +33,7 @@ def build_report(ir: dict[str, Any]) -> dict[str, Any]:
     duplicate_tree = sorted(item for item, count in tree_counts.items() if count > 1)
     unknown_tree = sorted(set(tree_ids) - set(screen_ids))
     mode = ir.get("design", {}).get("mode", "reconstruct")
-    needs_design_evidence = mode in {"generate", "redesign"}
+    needs_design_evidence = purpose == "review" and mode in {"generate", "redesign"}
     needs_source = mode == "reconstruct"
 
     gates = [
@@ -62,6 +64,7 @@ def build_report(ir: dict[str, Any]) -> dict[str, Any]:
         "status": "blocked" if failed else "pass",
         "project": ir.get("project", {}).get("name", "Project"),
         "designMode": mode,
+        "purpose": purpose,
         "summary": {"passed": len(gates) - len(failed), "failed": len(failed), "total": len(gates)},
         "inventory": {
             "screens": len(screen_ids),
@@ -102,9 +105,10 @@ def main() -> int:
     parser.add_argument("ir", help="Path to ui-ir.json")
     parser.add_argument("--output", required=True, help="Path for ui-coverage.json")
     parser.add_argument("--markdown", help="Optional Markdown summary path")
+    parser.add_argument("--mode", choices=("projection", "review"), default="projection", help="Projection checks transfer only; review also evaluates design-quality coverage")
     parser.add_argument("--strict", action="store_true", help="Exit non-zero when a gate fails")
     args = parser.parse_args()
-    report = build_report(read_json(args.ir))
+    report = build_report(read_json(args.ir), args.mode)
     write_json(args.output, report)
     if args.markdown:
         target = Path(args.markdown)

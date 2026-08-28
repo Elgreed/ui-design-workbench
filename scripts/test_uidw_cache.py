@@ -41,7 +41,9 @@ class IncrementalCacheTests(unittest.TestCase):
         paths = uidw.state_paths(self.repo)
         self.assertEqual(report["status"], "synced")
         self.assertFalse(report["uiMode"]["enabled"])
-        self.assertEqual(report["mockData"]["mode"], "none")
+        self.assertEqual(report["mockData"]["mode"], "minimal")
+        self.assertTrue(report["mockData"]["enabled"])
+        self.assertTrue(report["configuration"]["setupRequired"])
         self.assertFalse((self.repo / uidw.STATE_DIR_NAME).exists())
         self.assertTrue(paths["config"].is_file())
         self.assertTrue(paths["cache"].is_file())
@@ -51,6 +53,102 @@ class IncrementalCacheTests(unittest.TestCase):
         self.assertGreaterEqual(graph["summary"]["screens"], 2)
         self.assertTrue(any(node["kind"] == "screen" for node in graph["nodes"]))
         self.assertEqual(uidw.inspect_cache(self.repo)[0]["status"], "clean")
+        self.assertEqual(report["initialization"]["status"], "created")
+
+    def test_lazy_initialization_creates_then_reuses_the_same_cache(self) -> None:
+        created, paths, config = uidw.ensure_initialized(self.repo)
+
+        self.assertEqual(created["status"], "synced")
+        self.assertEqual(created["initialization"]["status"], "created")
+        self.assertTrue(created["initialization"]["firstRun"])
+        self.assertTrue(created["initialization"]["configCreated"])
+        self.assertTrue(paths["config"].is_file())
+        self.assertTrue(config["autoSync"])
+        first_cache = uidw.read_json(paths["cache"], {})
+        first_context = uidw.read_json(paths["context"], {})
+        self.assertEqual(first_context["initialization"]["status"], "created")
+
+        with mock.patch.object(uidw, "analyze_file", wraps=uidw.analyze_file) as analyze:
+            reused, reused_paths, _ = uidw.ensure_initialized(self.repo)
+
+        analyze.assert_not_called()
+        self.assertEqual(reused["status"], "clean")
+        self.assertEqual(reused["initialization"]["status"], "reused")
+        self.assertFalse(reused["initialization"]["firstRun"])
+        self.assertTrue(reused["initialization"]["cacheReused"])
+        self.assertTrue(reused["initialization"]["synchronizationChecked"])
+        self.assertFalse(reused["initialization"]["sourceAnalysisRun"])
+        self.assertEqual(uidw.read_json(reused_paths["cache"], {})["syncedAt"], first_cache["syncedAt"])
+        self.assertEqual(uidw.read_json(reused_paths["context"], {})["initialization"]["status"], "reused")
+
+    def test_lazy_initialization_respects_explicit_no_sync(self) -> None:
+        result, paths, _ = uidw.ensure_initialized(self.repo, synchronize=False)
+
+        self.assertEqual(result["initialization"]["status"], "stale")
+        self.assertTrue(paths["config"].is_file())
+        self.assertFalse(paths["cache"].exists())
+
+    def test_lazy_initialization_reports_updated_after_a_ui_change(self) -> None:
+        uidw.ensure_initialized(self.repo)
+        (self.repo / "SettingsScreen.tsx").write_text(APP_TWO + "\nexport const revision = 2;\n", encoding="utf-8")
+
+        with mock.patch.object(uidw, "analyze_file", wraps=uidw.analyze_file) as analyze:
+            updated, _, _ = uidw.ensure_initialized(self.repo)
+
+        self.assertEqual(updated["initialization"]["status"], "updated")
+        self.assertEqual(updated["changedUiFiles"], ["SettingsScreen.tsx"])
+        self.assertEqual(analyze.call_count, 1)
+
+    def test_cache_merge_prunes_only_missing_authored_token_values(self) -> None:
+        uidw.initialize(self.repo)
+        paths = uidw.state_paths(self.repo)
+        generated = uidw.read_json(paths["ir"], {})
+        root_id = generated["screens"][0]["root"]
+        generated["tokens"] = {"colors": {"surface": {"value": "#ffffff"}}}
+        generated["nodes"][root_id]["style"] = {"background": "$colors.surface"}
+        design_model = uidw.extract_design_model(generated)
+        design_model["tokens"] = {"colors": {}}
+        design_model["nodes"][root_id]["style"] = {
+            "background": "$colors.missing",
+            "color": "$colors.surface",
+        }
+
+        merged = uidw.merge_authored_state(generated, design_model, uidw.extract_review_state(generated), [])
+
+        self.assertEqual(merged["nodes"][root_id]["style"]["background"], "$colors.surface")
+        self.assertEqual(merged["nodes"][root_id]["style"]["color"], "$colors.surface")
+        self.assertIn("surface", merged["tokens"]["colors"])
+        self.assertNotIn("$colors.missing", json.dumps(merged))
+
+    def test_config_setup_is_persistent_agent_readable_and_does_not_rescan(self) -> None:
+        uidw.initialize(self.repo)
+        with mock.patch.object(uidw, "analyze_file", wraps=uidw.analyze_file) as analyze:
+            uidw.configure_project(self.repo, "set", "detail", "high")
+            result = uidw.configure_project(self.repo, "set", "ui-mode", "on")
+        analyze.assert_not_called()
+        self.assertEqual(result["status"], "configured")
+        self.assertFalse(result["configuration"]["setupRequired"])
+        self.assertEqual(result["configuration"]["detailLevel"], "high")
+        self.assertTrue(result["configuration"]["uiMode"]["enabled"])
+        self.assertEqual(result["configuration"]["mockData"]["mode"], "exhaustive")
+        self.assertEqual(result["configuration"]["review"]["effective"]["validation"], "full")
+        self.assertEqual(result["configuration"]["preview"]["effective"]["themeLayout"], "matrix")
+        context = uidw.read_json(uidw.state_paths(self.repo)["context"], {})
+        self.assertEqual(context["configuration"]["status"], "configured")
+
+    def test_scanner_adds_only_source_evidenced_alternate_themes(self) -> None:
+        plain = uidw.initialize(self.repo)
+        plain_ir = uidw.read_json(uidw.state_paths(self.repo)["ir"], {})
+        self.assertEqual([item["id"] for item in plain_ir["themes"]["items"]], ["light"])
+        (self.repo / "theme.css").write_text(
+            ":root { --surface: #fff; }\n@media (prefers-color-scheme: dark) { :root { --surface: #111; } }\n",
+            encoding="utf-8",
+        )
+        uidw.sync_project(self.repo)
+        themed_ir = uidw.read_json(uidw.state_paths(self.repo)["ir"], {})
+        themes = {item["id"]: item for item in themed_ir["themes"]["items"]}
+        self.assertEqual(set(themes), {"light", "dark"})
+        self.assertTrue(themes["dark"]["sourceRefs"])
 
     def test_ui_mode_is_opt_in_and_does_not_rescan_clean_sources(self) -> None:
         uidw.initialize(self.repo)
@@ -68,38 +166,39 @@ class IncrementalCacheTests(unittest.TestCase):
         context = uidw.read_json(uidw.state_paths(self.repo)["context"], {})
         self.assertEqual(context["uiMode"], {"enabled": False, "default": "off"})
 
-    def test_init_prompt_defaults_off_and_accepts_explicit_yes(self) -> None:
+    def test_setup_asks_only_for_detail_without_a_recommendation(self) -> None:
+        context = uidw.configuration_context(uidw.default_config())
+        self.assertEqual([item["key"] for item in context["questionsForUser"]], ["detail"])
+        self.assertNotIn("recommended", context["questionsForUser"][0])
+        self.assertIn("Low", context["questionsForUser"][0]["question"])
+        self.assertIn("Medium", context["questionsForUser"][0]["question"])
+        self.assertIn("High", context["questionsForUser"][0]["question"])
+
+    def test_detail_prompt_has_no_default_choice(self) -> None:
         fake_stdin = mock.Mock()
         fake_stdin.isatty.return_value = True
         with mock.patch.object(uidw.sys, "stdin", fake_stdin), mock.patch("builtins.input", return_value=""):
-            self.assertFalse(uidw.resolve_init_ui_mode(None, False))
-        with mock.patch.object(uidw.sys, "stdin", fake_stdin), mock.patch("builtins.input", return_value="yes"):
-            self.assertTrue(uidw.resolve_init_ui_mode(None, False))
-        self.assertFalse(uidw.resolve_init_ui_mode(None, True))
+            self.assertIsNone(uidw.resolve_init_detail(None, False))
+        with mock.patch.object(uidw.sys, "stdin", fake_stdin), mock.patch("builtins.input", return_value="m"):
+            self.assertEqual(uidw.resolve_init_detail(None, False), "medium")
 
-    def test_mock_data_is_opt_in_screen_specific_context_without_rescan(self) -> None:
+    def test_high_detail_derives_exhaustive_screen_specific_mock_data_without_rescan(self) -> None:
         uidw.initialize(self.repo)
         paths = uidw.state_paths(self.repo)
-        config = uidw.normalized_config(uidw.read_json(paths["config"], {}))
-        config[uidw.MOCK_DATA_KEY] = {"mode": "representative", "seed": "stable"}
-        uidw.write_json(paths["config"], config)
         with mock.patch.object(uidw, "analyze_file", wraps=uidw.analyze_file) as analyze:
-            report = uidw.sync_project(self.repo)
-        self.assertEqual(report["status"], "clean")
+            uidw.configure_project(self.repo, "set", "detail", "high")
         analyze.assert_not_called()
         context = uidw.read_json(paths["context"], {})
-        self.assertEqual(context["mockData"]["mode"], "representative")
-        self.assertIn("do not stamp", context["mockData"]["instruction"])
+        self.assertEqual(context["mockData"]["mode"], "exhaustive")
+        self.assertEqual(context["mockData"]["source"], "detailLevel")
+        self.assertIn("boundary states", context["mockData"]["instruction"])
         self.assertIn("repeated synthetic item nodes", context["mockData"]["instruction"])
 
-    def test_mock_data_prompt_and_noninteractive_default(self) -> None:
-        fake_stdin = mock.Mock()
-        fake_stdin.isatty.return_value = True
-        with mock.patch.object(uidw.sys, "stdin", fake_stdin), mock.patch("builtins.input", return_value="r"):
-            self.assertEqual(uidw.resolve_init_mock_data(None, False), "representative")
-        with mock.patch.object(uidw.sys, "stdin", fake_stdin), mock.patch("builtins.input", return_value="e"):
-            self.assertEqual(uidw.resolve_init_mock_data(None, False), "exhaustive")
-        self.assertEqual(uidw.resolve_init_mock_data(None, True), "none")
+    def test_mock_data_depth_follows_detail_level(self) -> None:
+        for detail, expected in (("low", "minimal"), ("medium", "representative"), ("high", "exhaustive")):
+            config = uidw.normalized_config({"detailLevel": detail})
+            self.assertEqual(uidw.mock_data_context(config)["mode"], expected)
+            self.assertTrue(uidw.mock_data_context(config)["enabled"])
 
     def test_clean_sync_reuses_every_per_file_record(self) -> None:
         uidw.initialize(self.repo)
@@ -118,6 +217,21 @@ class IncrementalCacheTests(unittest.TestCase):
         self.assertEqual(report["changedUiFiles"], ["SettingsScreen.tsx"])
         self.assertEqual(analyze.call_count, 1)
         self.assertEqual(Path(analyze.call_args.args[1]).name, "SettingsScreen.tsx")
+
+    def test_non_ui_source_change_does_not_invalidate_ui_cache(self) -> None:
+        backend = self.repo / "worker.go"
+        backend.write_text("package worker\nfunc Run() {}\n", encoding="utf-8")
+        uidw.initialize(self.repo)
+        backend.write_text("package worker\nfunc Run() { println(\"changed\") }\n", encoding="utf-8")
+
+        status, _, _, _ = uidw.inspect_cache(self.repo)
+
+        self.assertEqual(status["status"], "clean")
+        self.assertEqual(status["changedUiFiles"], [])
+        self.assertEqual(status["sourceChanges"]["modified"], ["worker.go"])
+        synced = uidw.sync_project(self.repo)
+        self.assertEqual(synced["status"], "clean")
+        self.assertEqual(uidw.inspect_cache(self.repo)[0]["status"], "clean")
 
     def test_screen_context_is_bounded(self) -> None:
         uidw.initialize(self.repo)
@@ -184,13 +298,14 @@ class IncrementalCacheTests(unittest.TestCase):
         self.assertIn("UI Design Workbench context", text)
         self.assertIn("Estimated tokens", text)
 
-    def test_mock_data_can_be_changed_after_init_without_source_rescan(self) -> None:
+    def test_detail_change_updates_mock_data_without_source_rescan(self) -> None:
         uidw.initialize(self.repo)
         with mock.patch.object(uidw, "analyze_file", wraps=uidw.analyze_file) as analyze:
-            result = uidw.configure_mock_data(self.repo, "representative", "qa-seed")
+            high = uidw.configure_project(self.repo, "set", "detail", "high")
+            medium = uidw.configure_project(self.repo, "set", "detail", "medium")
         analyze.assert_not_called()
-        self.assertEqual(result["mockData"]["mode"], "representative")
-        self.assertEqual(result["mockData"]["seed"], "qa-seed")
+        self.assertEqual(high["configuration"]["mockData"]["mode"], "exhaustive")
+        self.assertEqual(medium["configuration"]["mockData"]["mode"], "representative")
 
     def test_config_migration_is_atomic_and_keeps_a_backup(self) -> None:
         path = self.base / "legacy" / "config.json"
@@ -199,6 +314,19 @@ class IncrementalCacheTests(unittest.TestCase):
         self.assertEqual(migrated["version"], uidw.CONFIG_VERSION)
         self.assertEqual(uidw.read_json(path, {})["version"], uidw.CONFIG_VERSION)
         self.assertEqual(uidw.read_json(path.with_name("config.v1.backup.json"), {})["version"], 1)
+
+    def test_legacy_mock_preference_migrates_to_detail_derived_mode(self) -> None:
+        path = self.base / "legacy-derived" / "config.json"
+        uidw.write_json(path, {
+            "version": 3,
+            "detailLevel": "medium",
+            "setup": {"completed": True, "answered": ["detail", "ui-mode", "mock-data"]},
+            "mockData": {"mode": "exhaustive", "seed": "custom", "explicit": True},
+        })
+        migrated = uidw.load_config(path)
+        self.assertEqual(migrated["mockData"], {"mode": "representative", "seed": "stable", "explicit": False})
+        self.assertEqual(migrated["setup"], {"completed": True, "answered": ["detail"]})
+        self.assertTrue(path.with_name("config.v3.backup.json").is_file())
 
     def test_findings_decisions_and_agent_jobs_use_stable_numbers(self) -> None:
         uidw.initialize(self.repo)
@@ -221,11 +349,19 @@ class IncrementalCacheTests(unittest.TestCase):
         ir_path = self.base / "review" / "ui-ir.json"
         uidw.write_json(ir_path, ir)
         proposal = uidw.prepare_agent_job(self.repo, ir_path, ir, "proposal", ir_path.parent / "proposal.json")
-        implementation = uidw.prepare_agent_job(self.repo, ir_path, ir, "implementation", ir_path.parent / "implementation.json")
+        implementation = uidw.prepare_agent_job(
+            self.repo,
+            ir_path,
+            ir,
+            "implementation",
+            ir_path.parent / "implementation.json",
+            direct=True,
+        )
         self.assertEqual(proposal["findingIds"], ["finding-a"])
         self.assertEqual(implementation["sourceTargets"], [source_file])
         self.assertFalse(uidw.read_json(ir_path.parent / "proposal.json", {})["sourceChangeAllowed"])
         self.assertTrue(uidw.read_json(ir_path.parent / "implementation.json", {})["sourceChangeAllowed"])
+        self.assertTrue(uidw.read_json(ir_path.parent / "implementation.json", {})["directSourceAuthorization"])
 
     def test_mock_scenario_requires_repeated_collection_items(self) -> None:
         ir = {

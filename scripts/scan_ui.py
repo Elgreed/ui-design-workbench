@@ -17,6 +17,9 @@ import tempfile
 from pathlib import Path
 from typing import Any, Iterable
 
+from fidelity_adapters import SourceContext, registered_adapters, translate_sources
+from fidelity_core import FIDELITY_SCHEMA_VERSION, property_evidence, seal_baseline
+
 
 EXCLUDED_DIRS = {
     ".git", ".gradle", ".idea", ".next", ".nuxt", ".dart_tool",
@@ -24,7 +27,7 @@ EXCLUDED_DIRS = {
     "vendor", "coverage", ".codegraph", ".worktrees", ".claude", ".lavish", ".codex",
     ".agents", ".cursor", ".gemini", ".opencode", ".ui-design-workbench",
 }
-SCANNER_VERSION = 3
+SCANNER_VERSION = 5
 SOURCE_EXTENSIONS = {
     ".kt", ".kts", ".xml", ".swift", ".storyboard", ".xib", ".dart",
     ".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".html",
@@ -249,6 +252,59 @@ def visible_html_text(value: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", value)).strip()
 
 
+def extract_theme_candidates(path: Path, text: str, source: str) -> list[dict[str, Any]]:
+    """Detect only source-evidenced color themes; light remains the display fallback."""
+    normalized = path.as_posix().lower()
+    candidates: list[dict[str, Any]] = []
+
+    def add(theme_id: str, kind: str, label: str, offset: int, evidence: str) -> None:
+        candidates.append({
+            "id": slug(theme_id, "theme"),
+            "label": label,
+            "kind": kind,
+            "confidence": "high",
+            "sourceRefs": [{"file": source, "line": line_number(text, offset), "evidence": evidence}],
+        })
+
+    custom_pattern = re.compile(r"data-theme\s*=\s*[\"']([A-Za-z][A-Za-z0-9_-]*)[\"']", re.I)
+    for match in custom_pattern.finditer(text):
+        raw = match.group(1)
+        kind = "dark" if raw.lower() == "dark" else "light" if raw.lower() == "light" else "custom"
+        add(raw, kind, raw.replace("-", " ").title(), match.start(), "data-theme")
+
+    dark_markers = (
+        r"prefers-color-scheme\s*:\s*dark",
+        r"\bdarkColorScheme\b",
+        r"\bisSystemInDarkTheme\s*\(",
+        r"\bThemeMode\.dark\b",
+        r"\bdarkTheme\s*[:=]",
+        r"\bpreferredColorScheme\s*\(\s*\.dark\s*\)",
+        r"\bcolorScheme\s*==\s*\.dark\b",
+        r"RequestedTheme\s*=\s*[\"']Dark[\"']",
+        r"x:Key\s*=\s*[\"']Dark[\"']",
+        r"\bTheme\.Dark\b",
+        r"\bDayNight\b",
+    )
+    dark_match = next((match for pattern in dark_markers if (match := re.search(pattern, text, re.I))), None)
+    if "/values-night" in normalized and dark_match is None:
+        dark_match = re.match(r"", text)
+    if dark_match:
+        add("dark", "dark", "Dark", dark_match.start(), "platform-dark-theme")
+
+    light_markers = (
+        r"\blightColorScheme\b",
+        r"\bThemeMode\.light\b",
+        r"\blightTheme\s*[:=]",
+        r"\bpreferredColorScheme\s*\(\s*\.light\s*\)",
+        r"RequestedTheme\s*=\s*[\"']Light[\"']",
+        r"x:Key\s*=\s*[\"']Light[\"']",
+    )
+    light_match = next((match for pattern in light_markers if (match := re.search(pattern, text, re.I))), None)
+    if light_match:
+        add("light", "light", "Light", light_match.start(), "platform-light-theme")
+    return unique_dicts(candidates, ("id", "kind"))
+
+
 def extract_symbols(text: str, platforms: list[str]) -> list[dict[str, Any]]:
     symbols: list[dict[str, Any]] = []
     for platform in platforms:
@@ -408,6 +464,7 @@ def analyze_file(root: Path, path: Path) -> dict[str, Any] | None:
     symbols = extract_symbols(text, platforms)
     file_routes = extract_routes(text, source)
     file_navigation_targets = extract_navigation_targets(text, source) if suffix in {".html", ".htm"} else []
+    themes = extract_theme_candidates(path, text, source)
     return {
         "path": source,
         "kind": "source",
@@ -424,6 +481,7 @@ def analyze_file(root: Path, path: Path) -> dict[str, Any] | None:
         "routes": file_routes,
         "navigationTargets": file_navigation_targets,
         "components": component_candidates(source, platforms, symbols, role),
+        "themes": themes,
         "tokenFile": source if role == "theme" else None,
     }
 
@@ -436,6 +494,7 @@ def assemble_scan(root: Path, file_records: Iterable[dict[str, Any]]) -> dict[st
     assets: list[dict[str, Any]] = []
     components: list[dict[str, Any]] = []
     navigation_targets: list[dict[str, Any]] = []
+    theme_candidates: list[dict[str, Any]] = []
     token_files: list[str] = []
     detected: list[str] = []
     skipped_large = 0
@@ -468,6 +527,7 @@ def assemble_scan(root: Path, file_records: Iterable[dict[str, Any]]) -> dict[st
         navigation_targets.extend(record.get("navigationTargets", []))
         screens.extend(record.get("screens", []))
         components.extend(record.get("components", []))
+        theme_candidates.extend(record.get("themes", []))
         if record.get("tokenFile"):
             token_files.append(str(record["tokenFile"]))
 
@@ -477,6 +537,26 @@ def assemble_scan(root: Path, file_records: Iterable[dict[str, Any]]) -> dict[st
     routes = unique_dicts(routes, ("route", "file", "line"))
     components = unique_dicts(components, ("id",))
     navigation_targets = unique_dicts(navigation_targets, ("target", "file", "line"))
+    themes_by_id: dict[str, dict[str, Any]] = {
+        "light": {"id": "light", "label": "Light", "kind": "light", "confidence": "default", "sourceRefs": []}
+    }
+    for candidate in theme_candidates:
+        theme_id = str(candidate.get("id") or "").strip()
+        if not theme_id:
+            continue
+        current = themes_by_id.setdefault(theme_id, {
+            "id": theme_id,
+            "label": candidate.get("label") or theme_id,
+            "kind": candidate.get("kind") or "custom",
+            "confidence": candidate.get("confidence") or "high",
+            "sourceRefs": [],
+        })
+        for source_ref in candidate.get("sourceRefs", []):
+            if source_ref not in current["sourceRefs"]:
+                current["sourceRefs"].append(source_ref)
+        if current["sourceRefs"]:
+            current["confidence"] = "high"
+    themes = list(themes_by_id.values())
     assets.sort(key=lambda item: item["path"])
     platforms = [platform for platform in dict.fromkeys(detected) if platform != "shared-ui"]
     warnings: list[str] = []
@@ -501,12 +581,14 @@ def assemble_scan(root: Path, file_records: Iterable[dict[str, Any]]) -> dict[st
             "tokenFiles": len(set(token_files)),
             "componentCandidates": len(components),
             "navigationTargets": len(navigation_targets),
+            "themes": len(themes),
         },
         "screens": screens,
         "routes": routes,
         "tokenFiles": sorted(set(token_files)),
         "assets": assets[:2000],
         "components": components[:2000],
+        "themes": themes,
         "navigationTargets": navigation_targets[:2000],
         "uiFiles": ui_files[:2000],
         "warnings": warnings,
@@ -528,11 +610,32 @@ def slug(value: str, fallback: str) -> str:
 
 
 def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
-    scan_screens = scan_result.get("screens", [])[:100]
+    repo_root = Path(scan_result["repoRoot"])
+    adapter_contexts: list[SourceContext] = []
+    for item in scan_result.get("uiFiles", []):
+        source = str(item.get("path") or "")
+        path = repo_root / source
+        if not source or not path.is_file():
+            continue
+        text = read_text(path)
+        if text is None:
+            continue
+        adapter_contexts.append(SourceContext(
+            root=repo_root,
+            path=path,
+            source=source,
+            text=text,
+            platforms=tuple(str(value) for value in item.get("platforms", [])),
+            role=str(item.get("role") or "ui-source"),
+        ))
+    translated = translate_sources(adapter_contexts)
+    raw_scan_screens = scan_result.get("screens", [])[:100]
+    scan_screens = raw_scan_screens
     if not scan_screens:
+        fallback_ui_file = next((str(item.get("path") or "") for item in scan_result.get("uiFiles", []) if item.get("path")), "")
         scan_screens = [{
-            "name": "UI inventory",
-            "file": "",
+            "name": Path(fallback_ui_file).stem or "UI inventory",
+            "file": fallback_ui_file,
             "line": 1,
             "platform": scan_result.get("detectedPlatforms", ["unknown"])[0] if scan_result.get("detectedPlatforms") else "unknown",
             "confidence": "unsupported",
@@ -584,6 +687,18 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
             "fragment": candidate.get("fragment", ""),
             "logicalView": candidate.get("logicalView", False),
         })
+        root_provenance = {}
+        title_provenance = {}
+        source_provenance = {}
+        if source["file"]:
+            root_provenance = {
+                "component": property_evidence(source["file"], source["line"], source["symbol"], "inventory", "approximate"),
+                "layout.direction": property_evidence(source["file"], source["line"], "source screen container", "inventory", "approximate"),
+                "layout.width": property_evidence(source["file"], source["line"], "source screen bounds", "inventory", "approximate"),
+                "layout.height": property_evidence(source["file"], source["line"], "source screen bounds", "inventory", "approximate"),
+            }
+            title_provenance = {"text": property_evidence(source["file"], source["line"], source["symbol"], "inventory", candidate.get("confidence", "approximate"))}
+            source_provenance = {"text": property_evidence(source["file"], source["line"], "source location", "inventory", "exact")}
         nodes[root_id] = {
             "type": "container",
             "component": "DiscoveredScreen",
@@ -592,10 +707,15 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
             "children": [title_id, source_id, inventory_id],
             "source": source,
             "confidence": "approximate",
+            "provenance": root_provenance,
         }
-        nodes[title_id] = {"type": "text", "text": candidate.get("name", "Screen"), "style": {}, "source": source, "confidence": candidate.get("confidence", "approximate")}
-        nodes[source_id] = {"type": "text", "text": f"{candidate.get('file', '')}:{candidate.get('line', 1)}", "style": {}, "source": source, "confidence": "exact"}
+        nodes[title_id] = {"type": "text", "text": candidate.get("name", "Screen"), "style": {}, "source": source, "confidence": candidate.get("confidence", "approximate"), "provenance": title_provenance}
+        nodes[source_id] = {"type": "text", "text": f"{candidate.get('file', '')}:{candidate.get('line', 1)}", "style": {}, "source": source, "confidence": "exact", "provenance": source_provenance}
         nodes[inventory_id] = {"type": "custom", "text": "The AI agent should inspect this source file and replace this inventory placeholder with translated UI nodes.", "component": "UntranslatedSource", "source": source, "confidence": "unsupported"}
+
+    if translated.screens:
+        screens = translated.screens
+        nodes = translated.nodes
 
     detected_platforms = scan_result.get("detectedPlatforms", [])
     tv = any(platform.startswith("android-tv") for platform in detected_platforms)
@@ -641,7 +761,24 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
         }
         for platform_label, source_groups in tree_groups.items()
     ]
-    return {
+    translated_themes = {str(item.get("id")): item for item in translated.themes if isinstance(item, dict) and item.get("id")}
+    theme_items: list[dict[str, Any]] = []
+    for theme in scan_result.get("themes", [{"id": "light", "label": "Light", "kind": "light", "sourceRefs": []}]):
+        merged_theme = {**theme, "tokenOverrides": {}, "nodeOverrides": {}}
+        translated_theme = translated_themes.pop(str(theme.get("id")), None)
+        if translated_theme:
+            merged_theme.update(translated_theme)
+        theme_items.append(merged_theme)
+    theme_items.extend(translated_themes.values())
+    translated_screen_keys = {
+        (str(item.get("source", {}).get("file") or ""), str(item.get("source", {}).get("symbol") or item.get("name") or ""))
+        for item in translated.screens
+    }
+    catalog_components = [
+        item for item in scan_result.get("components", [])
+        if (str(item.get("source", {}).get("file") or ""), str(item.get("source", {}).get("symbol") or item.get("name") or "")) not in translated_screen_keys
+    ]
+    ir = {
         "version": 1,
         "project": {"name": Path(scan_result["repoRoot"]).name, "root": scan_result["repoRoot"]},
         "platforms": scan_result.get("detectedPlatforms", []),
@@ -655,14 +792,14 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
         "discoveredScreens": [
             {
                 "name": candidate.get("name", ""),
-                "file": candidate.get("file", ""),
-                "line": candidate.get("line", 1),
+                "file": candidate.get("file", candidate.get("source", {}).get("file", "")),
+                "line": candidate.get("line", candidate.get("source", {}).get("line", 1)),
                 "platform": candidate.get("platform", "unknown"),
                 "logicalView": candidate.get("logicalView", False),
                 "fragment": candidate.get("fragment", ""),
                 "selector": candidate.get("selector", ""),
             }
-            for candidate in scan_screens
+            for candidate in (translated.screens if translated.screens else raw_scan_screens)
         ],
         "discoveredRoutes": scan_result.get("routes", []),
         "discoveredNavigationTargets": scan_result.get("navigationTargets", []),
@@ -671,17 +808,41 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
             "height": 540 if tv else 844 if handheld_native else 800,
             "device": "tv" if tv else "phone" if handheld_native else "desktop",
         },
-        "fidelity": {"status": "inventory", "sourceDerived": False},
-        "tokens": {"colors": {}, "spacing": {}, "radii": {}, "typography": {}},
+        "fidelity": {
+            "schemaVersion": FIDELITY_SCHEMA_VERSION,
+            "status": "translated" if translated.screens else "inventory",
+            "sourceDerived": bool(translated.screens),
+            "adapters": [adapter.id for adapter in registered_adapters()],
+            "unsupported": translated.unsupported,
+        },
+        "tokens": translated.tokens,
+        "themes": {
+            "defaultThemeId": "light",
+            "items": theme_items,
+        },
         "componentCatalog": {
-            "status": "inventory",
-            "enforce": bool(scan_result.get("components")),
-            "components": scan_result.get("components", []),
+            "status": "inventory" if catalog_components else "ready",
+            "enforce": bool(catalog_components),
+            "components": catalog_components,
         },
         "review": {
             "sessionId": "initial-review",
             "baselineVersion": "baseline",
             "activeVersion": "baseline",
+            "diagnostics": {
+                "profiles": [
+                    {"id": "current", "label": "Current window", "viewport": "current", "zoomLevels": [0.2, 1, 2]},
+                    {"id": "desktop", "label": "Desktop", "viewport": {"width": 1440, "height": 900}, "zoomLevels": [0.5, 1, 2]},
+                    {"id": "compact", "label": "Compact", "viewport": {"width": 768, "height": 900}, "zoomLevels": [0.5, 1, 1.5]},
+                ],
+                "scenarios": [
+                    {"id": "zoom-reset", "label": "Zoom reset", "kind": "zoom-reset"},
+                    {"id": "overview-geometry", "label": "Overview geometry", "kind": "overview-geometry"},
+                    {"id": "menu-exclusivity", "label": "Menu exclusivity", "kind": "menu-exclusivity"},
+                    {"id": "layout-integrity", "label": "Layout integrity", "kind": "layout-integrity"},
+                    {"id": "accessibility-basics", "label": "Accessibility basics", "kind": "accessibility-basics"},
+                ],
+            },
             "versions": [
                 {"id": "baseline", "label": "Before", "kind": "baseline", "status": "approved", "nodeOverrides": {}}
             ],
@@ -691,6 +852,10 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
         "nodes": nodes,
         "warnings": ["Starter IR is an inventory skeleton and must be enriched from prioritized source files before fidelity review."] + scan_result.get("warnings", []),
     }
+    if translated.screens:
+        ir["warnings"] = ([f"Adapters left {len(translated.unsupported)} source expressions explicitly unsupported."] if translated.unsupported else []) + scan_result.get("warnings", [])
+    seal_baseline(ir)
+    return ir
 
 
 def write_json(path: Path, data: dict[str, Any]) -> None:

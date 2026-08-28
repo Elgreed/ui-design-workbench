@@ -1,0 +1,10 @@
+:root {
+  --brand-color: #2563eb;
+  --space-md: 16px;
+  --radius-md: 8px;
+}
+.shell { display: flex; flex-direction: column; gap: var(--space-md); padding: var(--space-md); }
+.title { color: #111827; font-size: 24px; line-height: 32px; }
+.primary { min-height: 40px; padding: 8px; background: var(--brand-color); color: #ffffff; border-radius: var(--radius-md); font-size: 14px; line-height: 20px; }
+.project-list { display: flex; flex-direction: column; gap: 8px; }
+li { background: #ffffff; border: 1px solid #d1d5db; }

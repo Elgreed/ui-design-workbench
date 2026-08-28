@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document targetRuntime="iOS.CocoaTouch">
+  <scenes>
+    <scene>
+      <objects>
+        <viewController id="home" customClass="HomeViewController">
+          <view id="rootView">
+            <rect key="frame" x="0" y="0" width="390" height="844" />
+            <subviews>
+              <label id="title" text="Projects"><rect key="frame" x="16" y="24" width="200" height="32" /></label>
+              <button id="create" title="Create project"><rect key="frame" x="16" y="72" width="180" height="44" /></button>
+            </subviews>
+          </view>
+        </viewController>
+      </objects>
+    </scene>
+  </scenes>
+</document>

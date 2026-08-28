@@ -5,6 +5,20 @@
   "type": "object",
   "properties": {
     "version": { "type": "integer", "minimum": 1 },
+    "setup": {
+      "type": "object",
+      "required": ["completed", "answered"],
+      "properties": {
+        "completed": { "type": "boolean" },
+        "answered": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+      },
+      "additionalProperties": false
+    },
+    "detailLevel": {
+      "type": ["string", "null"],
+      "enum": ["low", "medium", "high", null],
+      "description": "Low: basic layout with minimal mock data. Medium: interactions and states with representative data. High: expanded data, themes, and full checks."
+    },
     "autoSync": { "type": "boolean" },
     "cacheMode": { "enum": ["user", "project"] },
     "compactContext": { "type": "boolean" },
@@ -19,10 +33,33 @@
     },
     "mockData": {
       "type": "object",
-      "required": ["mode", "seed"],
+      "required": ["mode", "seed", "explicit"],
       "properties": {
-        "mode": { "enum": ["none", "representative", "exhaustive"] },
-        "seed": { "type": "string", "minLength": 1 }
+        "mode": {
+          "enum": ["minimal", "representative", "exhaustive"],
+          "description": "Derived from detailLevel: minimal for low, representative for medium, exhaustive for high."
+        },
+        "seed": { "const": "stable" },
+        "explicit": { "const": false }
+      },
+      "additionalProperties": false
+    },
+    "preview": {
+      "type": "object",
+      "required": ["themeLayout", "defaultView", "language"],
+      "properties": {
+        "themeLayout": { "enum": ["auto", "themes", "states", "matrix"] },
+        "defaultView": { "enum": ["overview", "single", "prototype", "states"] },
+        "language": { "enum": ["auto", "ru", "en"] }
+      },
+      "additionalProperties": false
+    },
+    "review": {
+      "type": "object",
+      "required": ["depth", "validation"],
+      "properties": {
+        "depth": { "enum": ["auto", "standard", "deep"] },
+        "validation": { "enum": ["auto", "quick", "full"] }
       },
       "additionalProperties": false
     }

@@ -90,6 +90,13 @@ def regression_ir() -> dict:
         "project": {"name": "ppr-admin-runtime-regression"},
         "platforms": ["web"],
         "design": {"mode": "reconstruct", "targetPlatforms": ["web"]},
+        "themes": {
+            "defaultThemeId": "light",
+            "items": [
+                {"id": "light", "label": "Light", "kind": "light", "sourceRefs": [], "tokenOverrides": {}, "nodeOverrides": {}},
+                {"id": "dark", "label": "Dark", "kind": "dark", "sourceRefs": [{"file": "theme.css", "line": 2, "evidence": "dark"}], "tokenOverrides": {}, "nodeOverrides": {}},
+            ],
+        },
         "viewport": {"width": 720, "height": 520, "device": "desktop"},
         "screens": screens,
         "nodes": nodes,
@@ -116,24 +123,20 @@ def regression_ir() -> dict:
 
 
 class RuntimeDiagnosticsTests(unittest.TestCase):
-    def test_renderer_omits_empty_action_provenance(self) -> None:
-        html = render_html(regression_ir())
-        self.assertNotIn('data-action="${esc(action.type||\'\')}"', html)
-        self.assertIn("actionAttrs=actionType?", html)
-        self.assertIn("semanticRole", html)
-
-    @unittest.skipUnless(shutil.which("node"), "Node.js is required for the headless runtime regression")
-    def test_ppr_static_nodes_are_filtered_but_real_controls_still_fail(self) -> None:
+    @staticmethod
+    def _run_runtime(ir: dict, mode: str = "review") -> dict:
         with tempfile.TemporaryDirectory() as directory:
             artifact_dir = Path(directory)
             preview = artifact_dir / "ui-preview.html"
             report_path = artifact_dir / "diagnostics.json"
-            preview.write_text(render_html(regression_ir(), artifact_dir), encoding="utf-8")
+            preview.write_text(render_html(ir, artifact_dir), encoding="utf-8")
             completed = subprocess.run(
                 [
                     "node",
                     str(ROOT / "scripts" / "smoke_preview.js"),
                     str(preview),
+                    "--mode",
+                    mode,
                     "--output",
                     str(report_path),
                     "--viewport-width",
@@ -147,8 +150,37 @@ class RuntimeDiagnosticsTests(unittest.TestCase):
                 text=True,
                 encoding="utf-8",
             )
-            self.assertEqual(completed.returncode, 0, f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}")
-            report = json.loads(report_path.read_text(encoding="utf-8"))
+            if completed.returncode != 0:
+                raise AssertionError(f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}")
+            return json.loads(report_path.read_text(encoding="utf-8"))
+
+    def test_renderer_omits_empty_action_provenance(self) -> None:
+        html = render_html(regression_ir())
+        self.assertNotIn('data-action="${esc(action.type||\'\')}"', html)
+        self.assertIn("actionAttrs=actionType?", html)
+        self.assertIn("semanticRole", html)
+
+    def test_renderer_exposes_source_evidenced_theme_and_variant_axes(self) -> None:
+        ir = regression_ir()
+        ir["themes"] = {
+            "defaultThemeId": "light",
+            "items": [
+                {"id": "light", "label": "Light", "kind": "light", "sourceRefs": [], "tokenOverrides": {}, "nodeOverrides": {}},
+                {"id": "dark", "label": "Dark", "kind": "dark", "sourceRefs": [{"file": "theme.css", "line": 2, "evidence": "dark"}], "tokenOverrides": {"colors": {"surface": "#111111"}}, "nodeOverrides": {}},
+            ],
+        }
+        html = render_html(ir)
+        self.assertIn("data-screen-theme", html)
+        self.assertIn("data-gallery-theme", html)
+        self.assertIn("data-gallery-scenario", html)
+        self.assertIn("screen-state-select", html)
+        self.assertIn("data-variant-axis", html)
+        self.assertIn("axisFromLocation", html)
+        self.assertIn("data-theme-id", html)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for the headless runtime regression")
+    def test_ppr_static_nodes_are_filtered_but_real_controls_still_fail(self) -> None:
+        report = self._run_runtime(regression_ir())
 
         navigation = next(item for item in report["checks"] if item["scenarioId"] == "navigation-flow")
         self.assertEqual(navigation["result"], "pass")
@@ -173,7 +205,43 @@ class RuntimeDiagnosticsTests(unittest.TestCase):
             for node_id in item.get("metrics", {}).get("untabbable", [])
         ]
         self.assertEqual(set(untabbable), {"admin-home-custom-action"})
-        self.assertEqual(len(untabbable), 2)
+        self.assertEqual(len(untabbable), 4)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for the headless runtime regression")
+    def test_projection_mode_checks_transfer_without_ui_audit(self) -> None:
+        ir = regression_ir()
+        ir["themes"] = {
+            "defaultThemeId": "light",
+            "items": [
+                {"id": "light", "label": "Light", "kind": "light", "sourceRefs": [], "tokenOverrides": {}, "nodeOverrides": {}},
+                {"id": "dark", "label": "Dark", "kind": "dark", "sourceRefs": [{"file": "theme.css", "line": 2, "evidence": "dark"}], "tokenOverrides": {"colors": {"surface": "#111111"}}, "nodeOverrides": {}},
+            ],
+        }
+        report = self._run_runtime(ir, "projection")
+        self.assertEqual(report["mode"], "projection")
+        scenario_ids = {item["scenarioId"] for item in report["checks"]}
+        self.assertIn("screen-render", scenario_ids)
+        self.assertIn("navigation-flow", scenario_ids)
+        self.assertNotIn("layout-integrity", scenario_ids)
+        self.assertNotIn("accessibility-basics", scenario_ids)
+        self.assertNotIn("contrast-focus", scenario_ids)
+        self.assertFalse(any("smallTargets" in item.get("metrics", {}) for item in report["checks"]))
+        self.assertFalse(any("lowContrast" in item.get("metrics", {}) for item in report["checks"]))
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for the headless runtime regression")
+    def test_navigation_warns_only_when_an_explicit_entry_cannot_reach_a_screen(self) -> None:
+        ir = regression_ir()
+        navigation = next(item for item in ir["review"]["diagnostics"]["scenarios"] if item["id"] == "navigation-flow")
+        navigation["entryScreenIds"] = ["cabinet-home"]
+        ir["nodes"]["cabinet-home-nav"]["action"]["target"] = "cabinet-home"
+
+        report = self._run_runtime(ir)
+        check = next(item for item in report["checks"] if item["scenarioId"] == "navigation-flow")
+        self.assertEqual(check["result"], "warning")
+        self.assertIn("cabinet-settings", check["metrics"]["unreachable"])
+        cabinet_flow = next(item for item in check["metrics"]["flows"] if item["flowId"] == "/cabinet")
+        self.assertTrue(cabinet_flow["reachabilityAssessed"])
+        self.assertEqual(cabinet_flow["entryScreenIds"], ["cabinet-home"])
 
 
 if __name__ == "__main__":

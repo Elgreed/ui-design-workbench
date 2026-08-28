@@ -35,9 +35,87 @@
         "additionalProperties": true
       }
     },
-    "nodes": { "type": "object", "additionalProperties": { "type": "object" } },
+    "nodes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": { "enum": ["container", "card", "text", "button", "input", "image", "icon", "spacer", "divider", "list", "custom"] },
+          "confidence": { "enum": ["exact", "high", "approximate", "unsupported"] },
+          "source": { "$ref": "#/$defs/sourceRef" },
+          "provenance": {
+            "type": "object",
+            "additionalProperties": { "$ref": "#/$defs/propertyEvidence" }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "tokens": { "type": "object" },
+    "fidelity": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": { "enum": ["0.3"] },
+        "status": { "type": "string" },
+        "sourceDerived": { "type": "boolean" },
+        "adapters": { "type": "array", "items": { "type": "string" } },
+        "unsupported": { "type": "array", "items": { "type": "object" } }
+      },
+      "additionalProperties": true
+    },
     "scenarioFixtures": { "type": "object" },
+    "themes": {
+      "type": "object",
+      "required": ["defaultThemeId", "items"],
+      "properties": {
+        "defaultThemeId": { "type": "string", "minLength": 1 },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "label", "kind"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "label": { "type": "string", "minLength": 1 },
+              "kind": { "enum": ["light", "dark", "custom"] },
+              "sourceRefs": { "type": "array", "items": { "type": "object" } },
+              "tokenOverrides": { "type": "object" },
+              "nodeOverrides": { "type": "object" }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
     "review": { "type": "object" }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "$defs": {
+    "sourceRef": {
+      "type": "object",
+      "properties": {
+        "file": { "type": "string" },
+        "line": { "type": "integer", "minimum": 1 },
+        "symbol": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "propertyEvidence": {
+      "type": "object",
+      "required": ["id", "kind", "file", "line", "adapter", "confidence"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "const": "source" },
+        "file": { "type": "string" },
+        "line": { "type": "integer", "minimum": 1 },
+        "expression": { "type": "string" },
+        "adapter": { "type": "string", "minLength": 1 },
+        "confidence": { "enum": ["exact", "high", "approximate", "unsupported"] }
+      },
+      "additionalProperties": false
+    }
+  }
 }

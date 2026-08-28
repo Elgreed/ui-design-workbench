@@ -24,7 +24,7 @@ The project key is derived from the normalized absolute repository path. The ins
 - `ui-context.json`: bounded model-facing summary with changed files and priority reads.
 - `ui-context-<screen>.json`: one screen subtree and its directly referenced sources.
 - `sync-report.json`: last invalidation reason, changed files, and affected screen IDs.
-- `config.json`: cache preferences, the opt-in `uiMode.enabled` flag, and `mockData.mode` (`none`, `representative`, or `exhaustive`). UI-mode and mock-data changes refresh model context but are excluded from the source-scan fingerprint.
+- `config.json`: cache preferences, the opt-in `uiMode.enabled` flag, and derived `mockData.mode`. Mock data is always enabled and follows detail level: `minimal`, `representative`, or `exhaustive`; it is not a separate preference.
 
 ## Commands
 
@@ -40,14 +40,13 @@ uidw --repo <repo> workbench --output-dir <artifact-dir>
 uidw --repo <repo> check --ir <artifact-dir>/ui-ir.json --level full
 uidw --repo <repo> doctor --json
 uidw --repo <repo> ui-mode --enable
-uidw --repo <repo> mock-data --set representative
 ```
 
-`context` performs lazy synchronization when `autoSync` is enabled. Use `sync --force` after scanner/schema upgrades or known discovery errors. Use `--verify-content` when timestamps may be unreliable, such as restored archives or unusual network filesystems.
+`init`, `sync`, `context`, `map`, and cache-backed workbench/review entry points share one internal `ensure_initialized` bootstrap. The first ordinary `context` or `review` request creates the default user-cache configuration, UI index, graph, and starter IR automatically; manual `init` is not required. Each result exposes `initialization.status` as `created`, `updated`, `reused`, or `stale`. Later calls reuse the existing cache and do not analyze unchanged source files. Use `sync --force` after scanner/schema upgrades or known discovery errors. Use `--verify-content` when timestamps may be unreliable, such as restored archives or unusual network filesystems.
 
 ## Invalidation
 
-Candidate files use size, nanosecond mtime, and SHA-256. Unchanged metadata reuses the existing digest; changed metadata is rehashed. Only added or content-modified files are analyzed again. Removed files drop their cached record. A theme or navigation change invalidates all screens; a screen/component change invalidates mapped dependents; scanner/config/cache-version changes force full reconstruction.
+Candidate files use size, nanosecond mtime, and SHA-256. Unchanged metadata reuses the existing digest; changed metadata is rehashed. The manifest watches broad source candidates so that newly added UI files can be discovered, but `changedUiFiles` contains only records classified as UI or paths already referenced by the UI inventory. Non-UI source changes refresh manifest metadata without invalidating the UI cache. Only added or content-modified UI files are analyzed again. Removed UI files drop their cached record. A theme or navigation change invalidates all screens; a screen/component change invalidates mapped dependents; scanner/config/cache-version changes force full reconstruction.
 
 Metadata-only changes update the manifest without rescanning. `--verify-content` rehashes every candidate when correctness is more important than I/O cost.
 
@@ -55,6 +54,8 @@ Every JSON write uses a same-directory temporary file plus atomic replacement. A
 
 Do not run a watcher, bridge server, emulator, or target application. Lazy command-boundary synchronization is deterministic, portable, and inexpensive for agent workflows.
 
-Interactive `init` explains UI guidance and asks whether to enable it with `[y/N]`; the default and every non-interactive invocation are off. `init --ui-mode` and `init --no-ui-mode` make automation deterministic. Later use `ui-mode --enable`, `ui-mode --disable`, or bare `ui-mode` for status. Enabling guidance changes agent behavior only for UI-related tasks and does not imply review, redesign, preview generation, or source-edit permission.
+Interactive `init` asks only for detail level and does not recommend or preselect a value. Automatic non-interactive initialization writes only the neutral technical config and never guesses a detail level: compact context reports `configuration.setupRequired` and one concise `questionsForUser` item until the user answers it. Use `config setup`, `config show`, or `config set detail <low|medium|high>` without rescanning unchanged UI files. `help config` describes the levels and `about` explains the tool boundary.
 
-Interactive `init` separately offers mock data; the default is `none`, and automation uses `init --mock-data none|representative|exhaustive`. The cached setting instructs agents how much scenario data to author, but never causes another repository scan by itself. Preserve existing `scenarioFixtures` and `screen.scenarios` for unaffected screen IDs during incremental sync; regenerate only fixtures whose source dependencies changed.
+UI guidance is not asked during setup and remains off unless explicitly enabled. `init --ui-mode` and `init --no-ui-mode` make automation deterministic. Later use `ui-mode --enable`, `ui-mode --disable`, or `config set ui-mode on|off`. Enabling guidance changes agent behavior only for UI-related tasks and does not imply review, redesign, preview generation, or source-edit permission.
+
+Mock data follows detail level automatically: `low` uses `minimal`, `medium` uses `representative`, and `high` uses `exhaustive`. This derived change refreshes model context but never causes another repository source scan by itself. Preserve existing `scenarioFixtures` and `screen.scenarios` for unaffected screen IDs during incremental sync; regenerate only fixtures whose source dependencies changed.

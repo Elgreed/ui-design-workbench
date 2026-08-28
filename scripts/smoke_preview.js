@@ -8,7 +8,7 @@ const { pathToFileURL } = require('url');
 const { spawn } = require('child_process');
 
 function parseArgs(argv) {
-  const result = { input: null, output: null, screenshot: null, geometryOutput: null, captureView: null, captureScreen: null, captureLeftPanel: null, captureRightPanel: null, captureInspectorTab: null, captureReviewSection: null, viewportWidth: 1440, viewportHeight: 960, failOnFindings: false, timeoutMs: 60000 };
+  const result = { input: null, output: null, screenshot: null, geometryOutput: null, captureView: null, captureScreen: null, captureLeftPanel: null, captureRightPanel: null, captureInspectorTab: null, captureReviewSection: null, viewportWidth: 1440, viewportHeight: 960, mode: 'projection', failOnFindings: false, timeoutMs: 60000 };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     if (value === '--output') result.output = argv[++index];
@@ -22,12 +22,14 @@ function parseArgs(argv) {
     else if (value === '--capture-review-section') result.captureReviewSection = argv[++index];
     else if (value === '--viewport-width') result.viewportWidth = Number(argv[++index]);
     else if (value === '--viewport-height') result.viewportHeight = Number(argv[++index]);
+    else if (value === '--mode') result.mode = argv[++index];
     else if (value === '--fail-on-findings') result.failOnFindings = true;
     else if (value === '--timeout-ms') result.timeoutMs = Number(argv[++index]);
     else if (!result.input) result.input = value;
     else throw new Error(`Unexpected argument: ${value}`);
   }
-  if (!result.input) throw new Error('Usage: smoke_preview.js <ui-preview.html> [--output diagnostics.json] [--screenshot preview.png] [--geometry-output geometry.json] [--capture-view overview|prototype|single|states|compare] [--capture-screen ID] [--capture-left-panel open|closed] [--capture-right-panel open|closed] [--capture-inspector-tab inspect|review|comments] [--capture-review-section summary|problems|changes] [--viewport-width 1440] [--viewport-height 960] [--fail-on-findings]');
+  if (!result.input) throw new Error('Usage: smoke_preview.js <ui-preview.html> [--mode projection|review] [--output diagnostics.json] [--screenshot preview.png] [--geometry-output geometry.json] [--capture-view overview|prototype|single|states|compare] [--capture-screen ID] [--capture-left-panel open|closed] [--capture-right-panel open|closed] [--capture-inspector-tab inspect|review|comments] [--capture-review-section summary|problems|changes] [--viewport-width 1440] [--viewport-height 960] [--fail-on-findings]');
+  if (!['projection', 'review'].includes(result.mode)) throw new Error('--mode must be projection or review');
   if (result.captureView && !['overview', 'prototype', 'single', 'states', 'compare'].includes(result.captureView)) throw new Error('--capture-view must be overview, prototype, single, states, or compare');
   if (result.captureLeftPanel && !['open', 'closed'].includes(result.captureLeftPanel)) throw new Error('--capture-left-panel must be open or closed');
   if (result.captureRightPanel && !['open', 'closed'].includes(result.captureRightPanel)) throw new Error('--capture-right-panel must be open or closed');
@@ -102,6 +104,7 @@ async function main() {
   const activePort = path.join(profile, 'DevToolsActivePort');
   const url = pathToFileURL(input);
   url.searchParams.set('diagnostics', 'run');
+  url.searchParams.set('diagnostic-mode', args.mode);
   url.searchParams.set('lang', 'ru');
   const browser = spawn(findChrome(), [
     '--headless=new',
@@ -113,6 +116,7 @@ async function main() {
     url.href,
   ], { stdio: 'ignore', windowsHide: true });
   let socket;
+  let cdp;
   try {
     await waitForFile(activePort, Math.min(args.timeoutMs, 15000));
     const [port] = fs.readFileSync(activePort, 'utf8').trim().split(/\r?\n/);
@@ -125,7 +129,7 @@ async function main() {
     }
     const target = targets.find(item => item.type === 'page' && item.url.startsWith('file:'));
     if (!target) throw new Error('Preview page was not created by Chromium');
-    const cdp = await connectCdp(target.webSocketDebuggerUrl);
+    cdp = await connectCdp(target.webSocketDebuggerUrl);
     socket = cdp.socket;
     await cdp.call('Runtime.enable');
     await cdp.call('Emulation.setDeviceMetricsOverride', { width: args.viewportWidth, height: args.viewportHeight, deviceScaleFactor: 1, mobile: false });
@@ -148,6 +152,7 @@ async function main() {
         activeVersion: state.activeVersion,
         compareBaseVersion: state.compareBaseVersion,
         compareTargetVersion: state.compareTargetVersion,
+        versionIds: versions.map(version => version.id),
         versionDecision: state.versionDecision,
         findingDecisions: JSON.parse(JSON.stringify(state.findingDecisions)),
         findingFilter: state.findingFilter,
@@ -190,7 +195,28 @@ async function main() {
           .find(button => button.closest('.diagnostic-card')?.dataset.result !== 'pass');
         diagnosticAction?.click();
         const diagnosticFindingCreated = Boolean(diagnosticAction);
-        await runAutomatedReview();
+        let diagnosticDownloads = 0;
+        const originalAnchorClick = HTMLAnchorElement.prototype.click;
+        HTMLAnchorElement.prototype.click = function smokeDownloadGuard() {
+          if (this.download) diagnosticDownloads += 1;
+          return originalAnchorClick.call(this);
+        };
+        try {
+          await runAutomatedReview();
+        } finally {
+          HTMLAnchorElement.prototype.click = originalAnchorClick;
+        }
+        const diagnosticsDoNotDownload = diagnosticDownloads === 0;
+        const decisionsBeforeBulk = JSON.parse(JSON.stringify(state.findingDecisions));
+        if (document.querySelector('.review-next-action')?.dataset.action === 'problems') document.querySelector('.review-next-action')?.click();
+        if (document.querySelector('.review-next-action')?.dataset.action === 'select-all') document.querySelector('.review-next-action')?.click();
+        const bulkSelected = selectedFindings().length;
+        const bulkSelectionPathWorks = bulkSelected === findings.filter(item => !findingResolved(item)).length
+          && state.reviewSection === 'problems'
+          && document.querySelector('.review-next-action')?.dataset.action === 'changes'
+          && document.querySelector('.review-next-action')?.textContent?.includes(String(bulkSelected));
+        state.findingDecisions = decisionsBeforeBulk;
+        renderFindings();
         const actionableChecks = (state.diagnostics?.checks || []).filter(item => item.result !== 'pass').length;
         const actionableGroups = groupDiagnosticChecks((state.diagnostics?.checks || []).filter(item => item.result !== 'pass')).length;
         const totalAfter = Number(document.querySelector('.finding-total')?.textContent || 0);
@@ -252,6 +278,10 @@ async function main() {
           && getComputedStyle(document.querySelector('.header-version-picker')).display === 'none'
           && document.querySelectorAll('.compare-version-select').length === 2
           && getComputedStyle(document.querySelector('.compare-workspace-controls')).display === 'flex';
+        const compareSelectorsMatchCanvas = document.querySelector('.compare-base-select')?.value === state.compareBaseVersion
+          && document.querySelector('.compare-target-select')?.value === state.compareTargetVersion
+          && Boolean(document.querySelector('.device[data-version-id="' + CSS.escape(state.compareBaseVersion) + '"]'))
+          && Boolean(document.querySelector('.device[data-version-id="' + CSS.escape(state.compareTargetVersion) + '"]'));
         const smokeMarker = document.querySelector('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]');
         const smokeCommentMarker = document.querySelector('[data-open-annotation="' + CSS.escape(smokeAnnotation.id) + '"]');
         const baseDeviceRect = document.querySelector('.device[data-version-id="' + CSS.escape(state.compareBaseVersion) + '"]')?.getBoundingClientRect();
@@ -323,17 +353,40 @@ async function main() {
           scenarioScreen.scenarios = [...(Array.isArray(originalScenarios) ? originalScenarios : []), { id: 'smoke-fixture', label: 'Smoke fixture', nodeOverrides: { [scenarioNodeId]: { text: 'Scenario fixture visible' } } }];
           setScreen(scenarioScreen.id, 'single');
           await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-          const scenarioButton = document.querySelector('[data-screen-scenario="smoke-fixture"]');
-          scenarioButton?.click();
+          const scenarioSelect = document.querySelector('.screen-state-select[data-screen-scenario]');
+          const initialControlWidth = scenarioSelect?.getBoundingClientRect().width || 0;
+          if (scenarioSelect) {
+            scenarioSelect.value = 'smoke-fixture';
+            scenarioSelect.dispatchEvent(new Event('change', { bubbles: true }));
+          }
           await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-          screenScenarioControlsWork = Boolean(scenarioButton)
+          const updatedScenarioSelect = document.querySelector('.screen-state-select[data-screen-scenario]');
+          screenScenarioControlsWork = Boolean(scenarioSelect)
             && state.screenScenarioIds[scenarioScreen.id] === 'smoke-fixture'
-            && document.querySelector('.stage [data-node-id="' + CSS.escape(scenarioNodeId) + '"]')?.textContent === 'Scenario fixture visible';
+            && document.querySelector('.stage [data-node-id="' + CSS.escape(scenarioNodeId) + '"]')?.textContent === 'Scenario fixture visible'
+            && updatedScenarioSelect?.value === 'smoke-fixture'
+            && updatedScenarioSelect?.closest('.screen-control-group')?.querySelector('.screen-state-label')
+            && Math.abs((updatedScenarioSelect?.getBoundingClientRect().width || 0) - initialControlWidth) < 1
+            && document.activeElement === updatedScenarioSelect;
           setView('states');
           await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
           stateGalleryWorks = state.view === 'states'
             && document.querySelectorAll('.state-gallery .state-panel').length === screenScenarios(scenarioScreen).length
-            && document.querySelectorAll('.state-gallery .device').length === screenScenarios(scenarioScreen).length;
+            && document.querySelectorAll('.state-gallery .device').length === screenScenarios(scenarioScreen).length
+            && Boolean(document.querySelector('.screen-state-select[data-gallery-scenario]'))
+            && (themes.length < 2 || Boolean(document.querySelector('.screen-state-select[data-gallery-theme]')))
+            && document.querySelector('.variant-gallery-toolbar')?.style.zoom === ''
+            && Number.parseFloat(document.querySelector('.variant-canvas')?.style.zoom || '0') > 0;
+          const matrixButton = document.querySelector('[data-variant-axis="matrix"]');
+          if (matrixButton) {
+            matrixButton.click();
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            stateGalleryWorks = stateGalleryWorks
+              && state.variantAxis === 'matrix'
+              && Boolean(document.querySelector('.screen-state-select[data-gallery-scenario]'))
+              && Boolean(document.querySelector('.screen-state-select[data-gallery-theme]'))
+              && document.querySelectorAll('.state-gallery .device').length === themes.length * screenScenarios(scenarioScreen).length;
+          }
           if (originalScenarios === undefined) delete scenarioScreen.scenarios; else scenarioScreen.scenarios = originalScenarios;
           delete state.screenScenarioIds[scenarioScreen.id];
         }
@@ -354,6 +407,20 @@ async function main() {
           .every(marker => marker.dataset.markerDevice?.includes(':' + state.compareBaseVersion + ':'));
         const versionArchitectureWorks = resolvedMarkerHidden && proposalMarkersHidden && baselineMarkerRestored
           && resolvedMarkersStayOnBaseline && compareFindingMarkersBaselineOnly;
+        state.activeVersion = 'smoke-imported-proposal';
+        versionSelect.value = state.activeVersion;
+        setReviewSection('changes');
+        renderFindings();
+        const addressedCard = document.querySelector('.finding-card[data-finding-id="' + CSS.escape(smokeFinding.id) + '"]');
+        const addressedIsNotVerified = findingAddressedInProposal(smokeFinding)
+          && !findingResolved(smokeFinding)
+          && addressedCard?.querySelector('.finding-card-status')?.textContent?.trim() === 'Учтено в новом макете'
+          && document.querySelector('.version-application-status')?.textContent?.trim() === 'Ещё не применён к проекту'
+          && !document.querySelector('[data-review-section="changes"]')?.classList.contains('complete');
+        state.compareBaseVersion = baselineVersion;
+        state.compareTargetVersion = 'smoke-imported-proposal';
+        setView('compare');
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const markerBeforeZoom = document.querySelector('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]')?.getBoundingClientRect();
         const deviceBeforeZoom = document.querySelector('.device[data-version-id="' + CSS.escape(state.compareBaseVersion) + '"]')?.getBoundingClientRect();
         const anchorBeforeZoom = document.querySelector('.device[data-version-id="' + CSS.escape(state.compareBaseVersion) + '"] .device-content')?.getBoundingClientRect();
@@ -546,6 +613,7 @@ async function main() {
           actionableChecks,
           actionableGroups,
           diagnosticFindingCreated,
+          diagnosticsDoNotDownload,
           autoReviewFindings,
           autoReviewButton: Boolean(document.querySelector('.review-next-action')),
           agentReviewButtonEnabled: document.querySelector('.open-agent-review')?.disabled === false,
@@ -579,6 +647,7 @@ async function main() {
           contextProposalAction,
           importWorks: Boolean(importWorks),
           compareVariantsWork,
+          compareSelectorsMatchCanvas,
           layerControlsWork: document.querySelectorAll('[data-canvas-layer]').length === 1
             && document.querySelectorAll('.mode-button[data-view]').length === 5
             && document.querySelectorAll('.compare-version-select').length === 2,
@@ -600,6 +669,7 @@ async function main() {
           railFileGeometryWorks,
           markersToggleWork: markersHide && markersRestore,
           versionArchitectureWorks,
+          addressedIsNotVerified,
           markerTracksZoom,
           markerTrackMetrics,
           markerLayoutStable,
@@ -615,6 +685,7 @@ async function main() {
           linkedVisible,
           selected,
           selectionNextStep,
+          bulkSelectionPathWorks,
           requestFindings: request?.acceptedFindingIds?.length || 0,
           runtimeActionable,
           reviewEntryPoint: Boolean(document.querySelector('[data-inspector-tab="review"]')),
@@ -649,18 +720,19 @@ async function main() {
       : (workflow.selected !== 0 || workflow.requestFindings !== 0 || workflow.runtimeActionable);
     if (workflow.totalBefore > 0 && (
       !workflow.auditLinks || !workflow.linkedVisible || workflow.totalAfter !== workflow.totalBefore + expectedRuntimeFindings
+      || !workflow.diagnosticsDoNotDownload
       || workflow.autoReviewFindings !== expectedRuntimeFindings || !workflow.autoReviewButton
       || !workflow.agentReviewButtonEnabled || !workflow.expertReviewButtonEnabled || !workflow.expertRequestValid
       || !workflow.expertHandoffValid || !workflow.proposalHandoffValid || !workflow.implementationHandoffValid || !workflow.directFixEntryPoint
       || !workflow.handoffPanelWorks
-      || actionableWorkflowFailed || !workflow.importWorks || !workflow.compareVariantsWork || !workflow.reviewSectionsWork
+      || actionableWorkflowFailed || !workflow.importWorks || !workflow.compareVariantsWork || !workflow.compareSelectorsMatchCanvas || !workflow.reviewSectionsWork
       || !workflow.layerControlsWork || !workflow.prototypeForcesInteraction || !workflow.prototypeNavigationWorks || !workflow.prototypeTreePreservesMode
       || !workflow.screenScenarioControlsWork || !workflow.stateGalleryWorks || !workflow.screenScenarioDiagnosticsWork || !workflow.markerNumberMatches || !workflow.markerPopoverOpens
       || !workflow.markerPopoverCollapses || !workflow.commentPopoverOpens || !workflow.commentPopoverCollapses
       || !workflow.userCommentHasDistinctColor || !workflow.markersFollowComparedViews || !workflow.railCommandsWork || !workflow.railMenusWork || !workflow.railFileGeometryWorks
-      || !workflow.markersToggleWork || !workflow.versionArchitectureWorks
+      || !workflow.markersToggleWork || !workflow.versionArchitectureWorks || !workflow.addressedIsNotVerified
       || !workflow.markerTracksZoom || !workflow.markerLayoutStable || !workflow.markerLeaderWorks || !workflow.middleMousePanWorks || !workflow.localeSwitchWorks
-      || !workflow.selectionNextStep || !workflow.sourceBeforeApproval || !workflow.sourceAfterApproval || !workflow.applyOnlyOnFixStep
+      || !workflow.selectionNextStep || !workflow.bulkSelectionPathWorks || !workflow.sourceBeforeApproval || !workflow.sourceAfterApproval || !workflow.applyOnlyOnFixStep
       || !workflow.sourceApprovalGuard || !workflow.revisionVisible
       || !workflow.selectionPreserved || !workflow.scrollPreserved
       || !workflow.inspectTabWorks || !workflow.commentsTabWorks || !workflow.reviewTabWorks
@@ -674,6 +746,10 @@ async function main() {
       throw new Error(`Viewport profile smoke failed: configured=${fixedProfiles.map(item => item.id)} measured=${[...measuredProfiles]}`);
     }
     const captureState = { ...initialVisualState };
+    captureState.findingFocus = [];
+    captureState.findingFilter = 'all';
+    captureState.findingSource = 'all';
+    captureState.findingScreen = 'all';
     if (args.captureView) captureState.view = args.captureView;
     if (args.captureScreen) captureState.screen = args.captureScreen;
     if (args.captureLeftPanel) captureState.sidebarOpen = args.captureLeftPanel === 'open';
@@ -684,6 +760,16 @@ async function main() {
     await cdp.call('Runtime.evaluate', {
       expression: `(() => {
         const snapshot = ${JSON.stringify(captureState)};
+        const originalVersionIds = new Set(snapshot.versionIds || []);
+        for (let index = versions.length - 1; index >= 0; index -= 1) {
+          if (originalVersionIds.has(versions[index].id)) continue;
+          delete versionById[versions[index].id];
+          versions.splice(index, 1);
+        }
+        document.querySelectorAll('.version-select option,.compare-version-select option').forEach(option => {
+          if (!originalVersionIds.has(option.value)) option.remove();
+        });
+        delete snapshot.versionIds;
         if (!screens.some(item => item.id === snapshot.screen)) snapshot.screen = screens[0]?.id;
         Object.assign(state, snapshot);
         versionSelect.value = state.activeVersion;
@@ -731,31 +817,62 @@ async function main() {
           const selectors = {
             rail: '.workbench-rail',
             leftPanel: '.sidebar',
-            documentBar: '.toolbar',
+            documentBar: '.workbench-header',
             stage: '.stage',
             canvasTools: '.canvas-tools',
-            zoomControls: '.zoom-controls',
+            zoomControls: '.floating-zoom',
             rightPanel: '.inspector',
             activeInspectorPane: '[data-inspector-pane]:not([hidden])',
+            reviewFooter: '.review-context-footer',
           };
           const elements = Object.fromEntries(Object.entries(selectors).map(([key, selector]) => [key, rect(document.querySelector(selector))]));
           document.querySelectorAll('[data-screen-card]').forEach((element, index) => { elements['screenCard:' + (element.dataset.screenCard || index)] = rect(element); });
           const cards = Object.entries(elements).filter(([key, value]) => key.startsWith('screenCard:') && value?.visible);
-          const overlaps = [];
+          const cardOverlaps = [];
           for (let first = 0; first < cards.length; first += 1) for (let second = first + 1; second < cards.length; second += 1) {
             const [aKey, a] = cards[first], [bKey, b] = cards[second];
-            if (a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y) overlaps.push([aKey, bKey]);
+            if (a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y) cardOverlaps.push([aKey, bKey]);
           }
-          return { version: 1, viewport: { width: innerWidth, height: innerHeight }, view: state.view, screen: state.screen, zoom: state.computedZoom, sidebarOpen: state.sidebarOpen, inspectorOpen: state.inspectorOpen, inspectorTab: state.inspectorTab, elements, overlaps };
+          const controlPairs = [['canvasTools', 'zoomControls'], ['canvasTools', 'rightPanel'], ['zoomControls', 'rightPanel'], ['canvasTools', 'leftPanel'], ['zoomControls', 'leftPanel']];
+          const controlOverlaps = controlPairs.filter(([aKey, bKey]) => {
+            const a = elements[aKey], b = elements[bKey];
+            return a?.visible && b?.visible && a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+          });
+          return { version: 2, viewport: { width: innerWidth, height: innerHeight }, view: state.view, screen: state.screen, zoom: state.computedZoom, sidebarOpen: state.sidebarOpen, inspectorOpen: state.inspectorOpen, inspectorTab: state.inspectorTab, elements, overlaps: [...cardOverlaps, ...controlOverlaps], cardOverlaps, controlOverlaps };
         })()`,
         returnByValue: true,
       });
       fs.writeFileSync(path.resolve(args.geometryOutput), JSON.stringify(geometryResponse.result?.value || {}, null, 2) + '\n');
     }
     await cdp.call('Page.enable');
-    const storageKeyResponse = await cdp.call('Runtime.evaluate', { expression: 'storageKey', returnByValue: true });
-    const reviewStorageKey = storageKeyResponse.result?.value;
+    const storageKeyResponse = await cdp.call('Runtime.evaluate', { expression: '({storageKey,reviewBaseRevision})', returnByValue: true });
+    const reviewStorageKey = storageKeyResponse.result?.value?.storageKey;
+    const baseRevision = storageKeyResponse.result?.value?.reviewBaseRevision;
     if (!reviewStorageKey) throw new Error('Review storage key is unavailable');
+    const legacyShellInjection = await cdp.call('Page.addScriptToEvaluateOnNewDocument', {
+      source: `localStorage.setItem(${JSON.stringify(reviewStorageKey)}, JSON.stringify({revision:${JSON.stringify(`${baseRevision}-legacy-shell`)},diagnostics:{mode:'review',checks:[],summary:{}},reviewRuns:[{id:'legacy-shell-run'}],findingDecisions:{}}));`,
+    });
+    await cdp.call('Page.navigate', { url: pathToFileURL(input).href });
+    const legacyMigrationDeadline = Date.now() + 15000;
+    let legacyShellStateRestored = false;
+    while (Date.now() < legacyMigrationDeadline) {
+      const migrationResponse = await cdp.call('Runtime.evaluate', {
+        expression: `(() => {
+          if (document.readyState !== 'complete') return false;
+          const stored = JSON.parse(localStorage.getItem(storageKey) || '{}');
+          return document.querySelector('.revision-notice')?.hidden === true
+            && state.reviewRuns.some(item => item.id === 'legacy-shell-run')
+            && stored.targetRevision === reviewTargetRevision
+            && stored.workbenchSchema === workbenchSchema;
+        })()`,
+        returnByValue: true,
+      });
+      legacyShellStateRestored = migrationResponse.result?.value === true;
+      if (legacyShellStateRestored) break;
+      await delay(100);
+    }
+    await cdp.call('Page.removeScriptToEvaluateOnNewDocument', { identifier: legacyShellInjection.identifier });
+    if (!legacyShellStateRestored) throw new Error('Renderer-only review state migration failed');
     const staleInjection = await cdp.call('Page.addScriptToEvaluateOnNewDocument', {
       source: `localStorage.setItem(${JSON.stringify(reviewStorageKey)}, JSON.stringify({revision:'stale-smoke',annotations:[],findingDecisions:{}}));`,
     });
@@ -773,6 +890,11 @@ async function main() {
     }
     await cdp.call('Page.removeScriptToEvaluateOnNewDocument', { identifier: staleInjection.identifier });
     if (!staleNoticeVisible) throw new Error('Stale revision notice did not appear');
+    const stalePreservedResponse = await cdp.call('Runtime.evaluate', {
+      expression: `(() => { persist(); return JSON.parse(localStorage.getItem(storageKey) || '{}').revision === 'stale-smoke'; })()`,
+      returnByValue: true,
+    });
+    if (stalePreservedResponse.result?.value !== true) throw new Error('Stale review snapshot was overwritten before a migration decision');
     const resetResponse = await cdp.call('Runtime.evaluate', {
       expression: `(() => {
         document.querySelector('.discard-review-state')?.click();
@@ -784,20 +906,27 @@ async function main() {
     if (resetResponse.result?.value !== true) throw new Error('Stale revision reset failed');
     if (args.output) fs.writeFileSync(path.resolve(args.output), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
     const summary = report.summary || {};
-    console.log(`Diagnostics complete: pass=${summary.pass || 0} warning=${summary.warning || 0} fail=${summary.fail || 0} checks=${report.checks?.length || 0}`);
-    console.log(`Review workflow: findings=${workflow.totalAfter || 0} auditLinks=${workflow.auditLinks || 0} selected=${workflow.selected || 0} requestFindings=${workflow.requestFindings || 0} profiles=${fixedProfiles.length}`);
+    console.log(`${args.mode === 'review' ? 'Review' : 'Projection'} diagnostics complete: pass=${summary.pass || 0} warning=${summary.warning || 0} fail=${summary.fail || 0} checks=${report.checks?.length || 0}`);
+    if (args.mode === 'review') console.log(`Review workflow: findings=${workflow.totalAfter || 0} auditLinks=${workflow.auditLinks || 0} selected=${workflow.selected || 0} requestFindings=${workflow.requestFindings || 0} profiles=${fixedProfiles.length}`);
     if (args.failOnFindings && (summary.fail || 0) > 0) process.exitCode = 1;
   } finally {
+    try { await Promise.race([cdp?.call('Browser.close'), delay(1500)]); } catch (_) {}
     try { socket?.close(); } catch (_) {}
-    try { browser.kill(); } catch (_) {}
     if (browser.exitCode === null) await Promise.race([
       new Promise(resolve => browser.once('exit', resolve)),
-      delay(1500),
+      delay(5000),
     ]);
+    if (browser.exitCode === null) {
+      try { browser.kill('SIGKILL'); } catch (_) {}
+      await Promise.race([
+        new Promise(resolve => browser.once('exit', resolve)),
+        delay(3000),
+      ]);
+    }
     let cleanupError = null;
-    for (let attempt = 0; attempt < 5; attempt += 1) {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
       try { fs.rmSync(profile, { recursive: true, force: true }); cleanupError = null; break; }
-      catch (error) { cleanupError = error; await delay(150 * (attempt + 1)); }
+      catch (error) { cleanupError = error; await delay(200 * (attempt + 1)); }
     }
     if (cleanupError) console.warn(`Temporary browser profile could not be removed: ${cleanupError.message}`);
   }

@@ -1,0 +1,14 @@
+{
+  "cases": [
+    {"source": "android/app/src/main/res/layout/activity_main.xml", "platforms": ["android-views"], "adapter": "android-xml", "screen": "activity-main", "platform": "android", "types": ["button", "container", "text"]},
+    {"source": "swiftui/SettingsView.swift", "platforms": ["swiftui"], "adapter": "swiftui", "screen": "settings-view", "platform": "ios", "types": ["button", "container", "text"]},
+    {"source": "xaml/MainPage.xaml", "platforms": ["windows-winui"], "adapter": "xaml", "screen": "main-page", "platform": "windows", "types": ["button", "container", "text"]},
+    {"source": "flutter/HomePage.dart", "platforms": ["flutter"], "adapter": "flutter", "screen": "home-page", "platform": "flutter", "types": ["button", "container", "text"]},
+    {"source": "react/Dashboard.tsx", "platforms": ["react-web"], "adapter": "react-jsx", "screen": "dashboard", "platform": "web", "types": ["button", "container", "text"]},
+    {"source": "react-native/App.tsx", "platforms": ["react-native"], "adapter": "react-native", "screen": "app", "platform": "react-native", "types": ["button", "container", "text"]},
+    {"source": "vue/Users.vue", "platforms": ["web"], "adapter": "vue", "screen": "users", "platform": "web", "types": ["button", "container", "text"]},
+    {"source": "svelte/Panel.svelte", "platforms": ["web"], "adapter": "svelte", "screen": "panel", "platform": "web", "types": ["button", "container", "text"]},
+    {"source": "apple/Main.storyboard", "platforms": ["uikit"], "adapter": "apple-interface-xml", "screen": "home-view-controller", "platform": "ios", "types": ["button", "container", "text"]},
+    {"source": "tv/TvScreen.kt", "platforms": ["android-tv-compose"], "adapter": "compose", "screen": "tv-screen", "platform": "android-tv", "types": ["button", "container", "text"]}
+  ]
+}

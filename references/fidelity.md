@@ -1,5 +1,13 @@
 # Source-fidelity contract
 
+## Fidelity Core v0.3
+
+The scanner uses the provider-neutral adapter registry described in [adapter-api.md](adapter-api.md). Built-in Web, React/Vue/Svelte, Compose, Android XML, SwiftUI, Storyboard/XIB, XAML, Flutter, and React Native adapters translate only deterministic supported subsets and record the rest in `fidelity.unsupported`. A strict artifact declares `fidelity.schemaVersion: "0.3"`.
+
+Each translated property carries stable property-level provenance. Token aliases are resolved for rendering while their original references and source records remain in IR. The baseline is sealed with `review.baselineHash`; proposal versions remain sparse `nodeOverrides`. Editing baseline screens, nodes, tokens, themes, or fixtures without an explicit rescan invalidates the strict gate.
+
+Use `uidw fidelity capabilities` for the installed support matrix, `uidw fidelity report` for the compact gate, and `uidw fidelity explain` for one node or evidence ID. Per-adapter golden fixtures prevent silent translation drift.
+
 Use this contract before creating reviewable IR. The goal is not a visually pleasant approximation; it is a traceable projection of the authored UI.
 
 ## Evidence bundle per screen

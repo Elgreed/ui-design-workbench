@@ -1,0 +1,9 @@
+<Page
+    x:Class="Fixture.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel Orientation="Vertical" Padding="16">
+        <TextBlock Text="Projects" FontSize="24" />
+        <Button Content="Create project" MinHeight="40" />
+    </StackPanel>
+</Page>

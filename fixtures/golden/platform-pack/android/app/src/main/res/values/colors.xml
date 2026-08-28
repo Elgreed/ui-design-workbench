@@ -1,0 +1,4 @@
+<resources>
+    <color name="surface">#FFFFFF</color>
+    <dimen name="space_md">16dp</dimen>
+</resources>
