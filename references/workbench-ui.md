@@ -34,14 +34,18 @@ Official pattern references:
 - Show the screen tree by default on wide windows.
 - Show only the active right-panel tab. Selecting an inspection or comment tool opens its matching tab.
 - Keep diagnostics collapsed until requested or until a run has non-pass results.
-- Put one compact `Запустить ревью` launcher at the top of the Review tab. It is the primary entry point for reviewing already assembled mockups; local diagnostic implementation details stay below it.
-- After the run, show the issue count and a secondary `Подготовить AI-ревью` handoff. It copies or downloads a provider-neutral job; an optional adapter may open a prepared native agent task, but it never submits the prompt. Keep a compact JSON-download action as the portable fallback, not a competing primary path.
+- Present Review as three explicit user steps: `Проверка`, `Проблемы`, and `Исправление`. Each step must show its completion state and a short plain-language outcome.
+- Keep exactly one visually primary contextual action in the sticky footer. It advances the workflow: check the interface, inspect issues, prepare a fix, compare it, approve it, and apply it.
+- Selection is a separate transition: after choosing findings, step 2 says exactly how many are selected and offers `Перейти к исправлению · N`. It must not start proposal generation or show an apply-to-project action.
+- Show `Применить исправления · N` only while step 3 is active, only after the selected proposal has been compared and approved. Steps 1 and 2 must never expose source-application wording.
+- Count expert and runtime findings together in the human-facing result. Never report “no issues” while unresolved expert findings exist.
+- Keep coverage, history, raw diagnostics, AI handoff, JSON import/export, and direct source changes inside collapsed `Дополнительно` or caution regions. They are escape hatches for advanced users, not parallel primary workflows.
 - Keep finding observation and actions visible; place impact, recommendation, and evidence in an expandable detail region.
 - Use the same stable number for each finding in the Problems list and on the canvas. Canvas markers remain circles until clicked, open one compact anchored card at a time, and expose an unambiguous top-right collapse control that restores the circle.
 - Render unresolved user comments on the canvas as numbered markers from a distinct, non-severity color family. They open and collapse like findings but remain a separate semantic layer and list.
 - Use short empty states that name the next direct action. Do not add tutorial paragraphs to compensate for ambiguous controls.
-- Split the Review tab into `Сводка`, `Проблемы`, and `Изменения`. Summary owns scope, coverage, history, and diagnostics; Problems owns audit evidence and selection; Changes owns the correction queue, imported proposals, and design approval. Do not vertically stack all three workflows.
-- Keep one sticky contextual primary action whose label advances with the state: run review, choose problems, create proposal, approve proposal, or prepare implementation. Secondary export/reject controls may remain adjacent but must not compete visually.
+- Do not vertically stack the three steps or expose multiple competing “start/fix/export” buttons. Secondary actions may remain available inside expandable details but must not compete visually with the contextual primary action.
+- Name versions by user meaning: `Исходный макет` and `Новый макет`, optionally followed by a concise proposal name. Do not expose unexplained `Before`/`After` labels. Fresh redesign previews open the newest proposal by default and clearly identify it as the new mockup; this does not imply that source files were changed.
 
 ## Controls and visual system
 
@@ -77,7 +81,7 @@ Official pattern references:
 - `Problems` is a visibility layer, not a separate review mode. Its marker set follows the current severity/source/screen/focused-block filters and never invents an anchor for a finding whose screen cannot be located.
 - Clicking a finding marker opens its description on the canvas without navigating away. Opening a second marker closes the first; hiding Problems, changing screen/version, or collapsing the card leaves list state and numbering synchronized.
 - Place markers beside the device they annotate, not in one global right-hand stack. In Compare, markers for the left version use the outer left edge and markers for the right version use the outer right edge; in ordinary views choose the nearest device edge to the anchor. User-comment markers follow the same placement rule in their own color.
-- A correction version lists the findings it actually resolves in `resolvedFindingIds`. Resolved markers and cards are absent on that version, remain visible on the baseline, and appear only on the unresolved side of Compare. Merely linking a proposal with `findingIds` does not prove resolution.
+- Bind each review to an immutable `reviewVersionId`, defaulting to the baseline. Version selectors change only what is displayed; they never retarget or rerun the review. Baseline finding markers appear only on that reviewed version, never on proposal/After versions, and only on the Before side of Compare. A correction version lists the baseline findings it addresses in `resolvedFindingIds`; merely linking it with `findingIds` does not prove implementation or verification.
 - Finding and comment markers use the scrollable canvas as their containing block, resolve collisions independently for each rendered device and side, and are remeasured after zoom, canvas/device scroll, resize, version change, and panel layout change. They must remain beside the owning device; leader lines preserve the exact node relationship when collision avoidance changes the vertical slot.
 - Holding the middle mouse button and dragging pans the entire canvas in both axes where overflow exists. Prevent browser autoscroll, show a grabbing cursor while active, and release capture on pointer up/cancel without activating product controls.
 - Large reviews default to all screens but may be scoped to the current screen. The scope and exact counts must travel in diagnostics and AI handoff payloads.

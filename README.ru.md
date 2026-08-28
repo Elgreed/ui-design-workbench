@@ -15,38 +15,115 @@ UI Design Workbench — CLI-first инструмент анализа и про�
 - Детерминированные синтетические данные и разреженные сценарии конкретного экрана без одинакового набора loading/error/success для всех экранов.
 - Общий масштабируемый холст с перемещением зажатым колёсиком, сворачиваемые и регулируемые панели, инспектор и привязанные к нужному макету маркеры проблем/комментариев разных цветов.
 - Компактная командная панель: сначала меню «Файл», затем экраны, свойства, ревью, комментарии, выбор языка и управление панелями.
+- Ревью жёстко привязано к неизменяемой версии Before: селекторы не меняют объект аудита, а её маркеры ошибок никогда не показываются на вариантах After.
 - Переключаемая русская/английская локализация оболочки, не переводящая содержимое реконструируемого продукта.
 - Детерминированная диагностика взаимодействий/геометрии и отдельный экспертный UX-аудит.
 - Sparse-предложения исправлений без изменения неизменяемой версии Before.
 - Профили Android, Android TV, iOS/iPadOS, macOS, Windows, Web, React Native и Flutter.
-- Нейтральные задания для разных AI-агентов и необязательный deep-link адаптер Codex без bridge-сервера.
+- Нейтральные задания для разных AI-агентов и необязательный deep-link адаптер Codex.
 
-## Поддерживаемые агенты и установка
+## Архитектура: единый CLI и тонкие адаптеры агентов
 
-Навык соответствует открытой структуре Agent Skills и подходит для Codex, Claude Code, Cursor, Gemini CLI, GitHub Copilot CLI, OpenCode и совместимых инструментов.
+Детерминированное ядро — CLI `uidw`. Оно сканирует и кеширует UI исходников, строит граф экранов, рендерит workbench, проверяет артефакты и формирует переносимые задания для AI. `SKILL.md` — короткий адаптер с инструкциями, когда и как агенту вызывать CLI. Благодаря такому разделению IR и поведение ревью не зависят от выбранного AI.
+
+Автоматическое обнаружение навыка удобно, но не обязательно. Инструмент может использовать любой локальный coding agent, который умеет читать файлы, запускать shell-команды и изменять только разрешённые в задании пути. Если конкретная версия агента не обнаруживает skills, достаточно установить CLI и использовать универсальный промпт ниже.
+
+## Установка на Windows, macOS и Linux
+
+Общие требования:
+
+- Git и Python 3.10 или новее;
+- рекомендуется `pipx`, чтобы изолированный CLI был доступен как команда `uidw`;
+- Node.js и Chrome, Edge либо Chromium необязательны и нужны только для headless-проверки взаимодействий и геометрии.
+
+### Windows 10/11 (PowerShell)
 
 ```powershell
 git clone https://github.com/Elgreed/ui-design-workbench.git
 cd ui-design-workbench
-./install.ps1 -Agent all
+py -m pip install --user pipx
+py -m pipx ensurepath
+py -m pipx install .
+.\install.ps1 -Agent all
 ```
+
+Откройте новый терминал и новую сессию агента, затем проверьте установку:
+
+```powershell
+uidw --version
+uidw --json doctor
+```
+
+Вместо `all` лучше указать имя одного нужного агента. Если PowerShell блокирует локальные скрипты, один раз запустите установщик с переопределением политики только для этого процесса:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Agent codex
+```
+
+Если команды `py` нет, используйте `python`. Запуск без установки: `python scripts\uidw.py --help`.
+
+### macOS
+
+Установите Python 3.10+ и Git через привычный пакетный менеджер, затем выполните:
 
 ```sh
 git clone https://github.com/Elgreed/ui-design-workbench.git
 cd ui-design-workbench
-./install.sh all
+python3 -m pip install --user pipx
+python3 -m pipx ensurepath
+python3 -m pipx install .
+sh ./install.sh all
 ```
 
-Вместо `all` можно указать `codex`, `claude`, `cursor`, `gemini`, `copilot`, `opencode` или `agents`. Установщик создаёт ссылки и не перезаписывает существующие каталоги. После установки перезапустите агент или откройте новую сессию. Пути перечислены в [интеграциях](references/agent-integrations.md).
+Откройте новый терминал и сессию агента, затем выполните `uidw --version` и `uidw --json doctor`. Запуск без установки: `python3 scripts/uidw.py --help`.
 
-Отдельно установите CLI из того же клона; предпочтителен изолированный `pipx`:
+### Linux
+
+Установите Python 3.10+, пакет `python3-venv`, если он требуется вашему дистрибутиву, и Git, затем выполните:
+
+```sh
+git clone https://github.com/Elgreed/ui-design-workbench.git
+cd ui-design-workbench
+python3 -m pip install --user pipx
+python3 -m pipx ensurepath
+python3 -m pipx install .
+sh ./install.sh all
+```
+
+Откройте новый shell и сессию агента, затем выполните `uidw --version` и `uidw --json doctor`. Запуск без установки: `python3 scripts/uidw.py --help`.
+
+При работе через WSL по возможности держите репозиторий, CLI, каталог артефактов и браузер на одной стороне файловой системы. Linux-адрес `file:///` отличается от Windows-адреса: для агента и браузера в Windows запускайте CLI через Windows Python либо открывайте файл по преобразованному Windows-пути.
+
+Без `pipx` поддерживается `python -m pip install --user .` в Windows или `python3 -m pip install --user .` в macOS/Linux. Каталог пользовательских скриптов может потребоваться добавить в `PATH`.
+
+## Подключение разных AI-агентов
+
+Установщик принимает `codex`, `claude`, `cursor`, `gemini`, `copilot`, `opencode`, `agents` или `all`. Он создаёт ссылку на клон репозитория и не перезаписывает существующий каталог.
+
+| Агент | Параметр установщика | Пользовательский каталог навыка | Как вызвать |
+| --- | --- | --- | --- |
+| Codex | `codex` | `~/.codex/skills/ui-design-workbench` | `Используй $ui-design-workbench и ...` |
+| Claude Code | `claude` | `~/.claude/skills/ui-design-workbench` | `Используй ui-design-workbench, прочитай его SKILL.md и ...` |
+| Cursor | `cursor` | `~/.cursor/skills/ui-design-workbench` | Тот же промпт в Agent mode |
+| Gemini CLI | `gemini` | `~/.gemini/skills/ui-design-workbench` | Тот же промпт в CLI-сессии |
+| GitHub Copilot CLI | `copilot` | `~/.copilot/skills/ui-design-workbench` | Тот же промпт в CLI-сессии |
+| OpenCode | `opencode` | `~/.config/opencode/skills/ui-design-workbench` | Тот же промпт в CLI-сессии |
+| Любой локальный агент | `agents` | `~/.agents/skills/ui-design-workbench` | Укажите путь к `SKILL.md` или используйте универсальный контракт ниже |
+
+В Windows `~` означает `%USERPROFILE%`. Обнаружение skills зависит от версии и настроек агента: наличие ссылки ещё не гарантирует автоматическую загрузку. Точные пути и границы возможностей описаны в [интеграциях](references/agent-integrations.md).
+
+Для агента без нативного обнаружения навыков добавьте это компактное правило в инструкции проекта или вставьте в начало UI-задачи:
 
 ```text
-pipx install .
-uidw --version
+Используй UI Design Workbench как детерминированный UI-движок. Начни с:
+uidw --repo <repo> context --format json
+Читай только компактный контекст и относящиеся к задаче исходники. Не запускай приложение.
+При реконструкции и ревью не меняй исходный проект, работай в отдельном каталоге артефактов.
+Для ревью и вариантов используй нейтральный ui-agent-job.json. Меняй реальный код только
+после явного разрешения пользователя и apply-задания с sourceChangeAllowed: true.
 ```
 
-Если `pipx` недоступен, используйте `python -m pip install --user .`. Без установки остаётся запасной запуск `python scripts/uidw.py ...`.
+Codex дополнительно поддерживает необязательный локальный deep-link адаптер. Остальные агенты используют скопированный промпт или `ui-agent-job.json`.
 
 ## Как пользоваться
 
@@ -65,6 +142,13 @@ uidw --version
 
 Управление холстом похоже на графические редакторы: зажмите колёсико мыши и тяните, чтобы перемещаться по обеим осям; для обычных режимов выберите одну активную версию, а для сопоставления откройте отдельный режим «Сравнение» и укажите левую/правую версии. Нумерованные «Проблемы» включаются независимо; исправленные в предложении замечания исчезают на этой версии, но сохраняются на неизменяемой исходной версии. Меню языка сохраняет `Русский` или `English`; язык также можно задать через `?lang=ru` или `?lang=en`. Переводится только оболочка инструмента.
 
+Обычный локальный процесс теперь запускается одной командой: она синхронизирует индекс, собирает HTML, выполняет проверки и возвращает корректный `file:///` URL без сервера:
+
+```text
+uidw --repo <repo> workbench --ir <review-dir>/ui-ir.json --output-dir <review-dir> --level full
+uidw --repo <repo> open <review-dir>/ui-preview.html --launch --view prototype --lang ru
+```
+
 ## Опциональный режим UI-рекомендаций
 
 При интерактивном `uidw init` утилита объясняет и предлагает включить лёгкий режим UI-рекомендаций. По умолчанию выбран ответ **Нет**; неинтерактивный и JSON-запуск также оставляют режим выключенным, если он не указан явно:
@@ -81,7 +165,11 @@ uidw --repo <repo> ui-mode --disable
 
 ```text
 uidw --repo <repo> init --mock-data representative
+uidw --repo <repo> mock-data --set representative --seed qa
+uidw --repo <repo> scenarios validate --ir <review-dir>/ui-ir.json
 ```
+
+Заполненные списки, таблицы и сетки состоят из отдельных синтетических item-узлов, а не из одной описательной строки. `scenarios validate` завершается ошибкой, если сценарий `mock-data` оставляет объявленную data-driven коллекцию пустой.
 
 Когда режим включён, компактный контекст просит совместимого AI-агента при обычных UI-правках переиспользовать компоненты проекта и соблюдать правила обнаруженной платформы: Android, Android TV, iOS/iPadOS, macOS, Windows или Web. Проверяются только относящиеся к задаче платформенные паттерны, доступность, состояния, способы ввода и адаптивность. Полное ревью, редизайн, HTML-макет, эмулятор или запуск приложения автоматически не включаются.
 
@@ -92,28 +180,41 @@ uidw --repo <repo> init --mock-data representative
 Первой командой агент выполняет:
 
 ```text
-uidw --repo <repo> context --json
+uidw --repo <repo> context --format json
 ```
 
 При первом вызове создаётся UI-индекс. Затем проверяются отпечатки файлов, а анализ повторяется только для добавленных или изменённых файлов. Для одного экрана:
 
 ```text
-uidw --repo <repo> context --screen <screen-id> --json
+uidw --repo <repo> context --screen <screen-id> --format json
+uidw --repo <repo> context --screen <screen-id> --budget 4000 --format markdown
+uidw --repo <repo> context --changed-only --budget 2500
 ```
 
 Остальные команды:
 
 ```text
 uidw --repo <repo> init
-uidw --repo <repo> status --json
+uidw --json --repo <repo> status
 uidw --repo <repo> sync
 uidw --repo <repo> sync --force
 uidw --repo <repo> map --output <artifact-dir>/ui-graph.json
-uidw --repo <repo> doctor --json
+uidw --repo <repo> diff
+uidw --repo <repo> check --ir <review-dir>/ui-ir.json --level quick
+uidw --repo <repo> workbench --ir <review-dir>/ui-ir.json --output-dir <review-dir>
+uidw --json --repo <repo> doctor
 uidw --repo <repo> ui-mode
 ```
 
 По умолчанию производные данные хранятся в пользовательском системном кеше, а не в навыке или проекте. `init --project-cache` — только явный режим для CI/переносимого окружения; он создаёт игнорируемую `.ui-design-workbench`. Подробнее: [протокол кеша](references/cache-protocol.md).
+
+| Платформа | Каталог кеша по умолчанию |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\UI Design Workbench\Cache\projects` |
+| macOS | `~/Library/Caches/ui-design-workbench/projects` |
+| Linux | `${XDG_CACHE_HOME:-~/.cache}/ui-design-workbench/projects` |
+
+Корневой каталог пользовательского кеша можно переопределить переменной `UIDW_CACHE_HOME`. Производный кеш не следует хранить внутри установленного каталога навыка.
 
 ## Процесс работы
 
@@ -134,6 +235,19 @@ uidw render <review-dir>/ui-ir.json --output <review-dir>/ui-preview.html
 uidw render <review-dir>/ui-ir.json --output <review-dir>/ui-preview.html --agent codex
 ```
 
+Полный жизненный цикл доступен и через CLI. Команды только готовят или импортируют переносимые файлы и сами не запускают AI-провайдера:
+
+```text
+uidw findings list --ir <review-dir>/ui-ir.json --screen settings
+uidw findings accept 7 25 --ir <review-dir>/ui-ir.json
+uidw proposal prepare --ir <review-dir>/ui-ir.json
+uidw apply prepare --ir <review-dir>/ui-ir.json
+uidw review prepare --ir <review-dir>/ui-ir.json
+uidw review import <result.json> --ir <review-dir>/ui-ir.json --output <review-dir>/ui-ir.imported.json
+```
+
+Только `apply prepare` создаёт задание, которому разрешено менять исходники. Для этого выбранные проблемы должны иметь проверенные файлы-цели внутри репозитория; сама команда задание не исполняет.
+
 ## Что включает глубокое ревью
 
 - Информационную архитектуру, понятность, расположение/приоритет действий, иконки, плотность, обратную связь, адаптивность и соответствие платформе.
@@ -149,16 +263,18 @@ uidw render <review-dir>/ui-ir.json --output <review-dir>/ui-preview.html --agen
 
 ```text
 python <skill-dir>/scripts/validate_platform_profiles.py <review-dir>/ui-ir.json --output <review-dir>/platform-profile-report.json --strict
+
+uidw check --ir <review-dir>/ui-ir.json --level quick --format sarif
+uidw check --ir <review-dir>/ui-ir.json --level full --format junit
+uidw visual-test --baseline approved.png --candidate current.png --output-dir <review-dir>/visual
+uidw pack --ir <review-dir>/ui-ir.json --output review.uidw.zip
+uidw unpack review.uidw.zip --output-dir <portable-review-dir>
 python <skill-dir>/scripts/coverage_report.py <review-dir>/ui-ir.json --output <review-dir>/ui-coverage.json --strict
 python <skill-dir>/scripts/generate_interaction_matrix.py <review-dir>/ui-ir.json --output <review-dir>/ui-interaction-matrix.json
 node <skill-dir>/scripts/smoke_preview.js <review-dir>/ui-preview.html --output <review-dir>/ui-diagnostics.json
 ```
 
 Успешный запуск команды не означает пройденную проверку: каждый non-pass нужно исправить или явно оставить блокером/пробелом проверки. Визуальную регрессию сравнивают только с явно принятой базовой версией того же размера и состояния. Подробнее: [валидация](references/validation.md) и [автоматизация качества](references/quality-automation.md).
-
-## Obsidian и долговременная память
-
-Obsidian не требуется. Технические хеши и промежуточный анализ остаются одноразовым кешем. В документацию проекта или Obsidian vault можно отдельно экспортировать долговечные данные: карту экранов, принятые UX-решения и историю редизайнов.
 
 ## Требования
 
@@ -167,4 +283,4 @@ Obsidian не требуется. Технические хеши и проме�
 - Node.js и Chrome/Edge/Chromium — только для headless-диагностики.
 - Pillow — только для pixel regression.
 
-Текущий публичный тег начальной версии — `v0.1`; ветка `main` может содержать более новые ещё не выпущенные возможности.
+Публичный тег начальной версии — `v0.1`; текущая версия CLI в разработке — `0.2.0`.

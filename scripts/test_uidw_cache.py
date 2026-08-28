@@ -90,6 +90,7 @@ class IncrementalCacheTests(unittest.TestCase):
         context = uidw.read_json(paths["context"], {})
         self.assertEqual(context["mockData"]["mode"], "representative")
         self.assertIn("do not stamp", context["mockData"]["instruction"])
+        self.assertIn("repeated synthetic item nodes", context["mockData"]["instruction"])
 
     def test_mock_data_prompt_and_noninteractive_default(self) -> None:
         fake_stdin = mock.Mock()
@@ -151,6 +152,117 @@ class IncrementalCacheTests(unittest.TestCase):
         self.assertEqual(config["cacheMode"], "project")
         self.assertTrue((state_dir / ".gitignore").is_file())
         self.assertTrue((state_dir / uidw.GRAPH_NAME).is_file())
+
+    def test_sync_preserves_authored_scenarios_and_marks_changed_binding_stale(self) -> None:
+        uidw.initialize(self.repo)
+        paths = uidw.state_paths(self.repo)
+        ir = uidw.read_json(paths["ir"], {})
+        screen = next(item for item in ir["screens"] if item.get("source", {}).get("file") == "SettingsScreen.tsx")
+        screen["scenarios"] = [{"id": "populated", "label": "Populated", "fixtureRef": "settings-populated"}]
+        screen["defaultScenarioId"] = "populated"
+        ir["scenarioFixtures"] = {"settings-populated": {"synthetic": True, "seed": "stable", "nodeOverrides": {}}}
+        uidw.write_json(paths["ir"], ir)
+        (self.repo / "SettingsScreen.tsx").write_text(APP_TWO + "\nexport const changed = true;\n", encoding="utf-8")
+
+        uidw.sync_project(self.repo)
+
+        updated = uidw.read_json(paths["ir"], {})
+        preserved = next(item for item in updated["screens"] if item["id"] == screen["id"])
+        self.assertEqual(preserved["defaultScenarioId"], "populated")
+        self.assertEqual(preserved["scenarios"][0]["fixtureRef"], "settings-populated")
+        self.assertEqual(preserved["sourceState"], "stale")
+        self.assertIn("settings-populated", updated["scenarioFixtures"])
+        self.assertTrue(paths["design"].is_file())
+        self.assertTrue(paths["review"].is_file())
+
+    def test_context_budget_and_changed_only_are_materialized(self) -> None:
+        uidw.initialize(self.repo)
+        paths = uidw.state_paths(self.repo)
+        output = uidw.write_context_variant(paths, token_budget=256, changed_only=True, output_format="markdown")
+        self.assertTrue(output.is_file())
+        text = output.read_text(encoding="utf-8")
+        self.assertIn("UI Design Workbench context", text)
+        self.assertIn("Estimated tokens", text)
+
+    def test_mock_data_can_be_changed_after_init_without_source_rescan(self) -> None:
+        uidw.initialize(self.repo)
+        with mock.patch.object(uidw, "analyze_file", wraps=uidw.analyze_file) as analyze:
+            result = uidw.configure_mock_data(self.repo, "representative", "qa-seed")
+        analyze.assert_not_called()
+        self.assertEqual(result["mockData"]["mode"], "representative")
+        self.assertEqual(result["mockData"]["seed"], "qa-seed")
+
+    def test_config_migration_is_atomic_and_keeps_a_backup(self) -> None:
+        path = self.base / "legacy" / "config.json"
+        uidw.write_json(path, {"version": 1, "autoSync": False})
+        migrated = uidw.load_config(path)
+        self.assertEqual(migrated["version"], uidw.CONFIG_VERSION)
+        self.assertEqual(uidw.read_json(path, {})["version"], uidw.CONFIG_VERSION)
+        self.assertEqual(uidw.read_json(path.with_name("config.v1.backup.json"), {})["version"], 1)
+
+    def test_findings_decisions_and_agent_jobs_use_stable_numbers(self) -> None:
+        uidw.initialize(self.repo)
+        paths = uidw.state_paths(self.repo)
+        ir = uidw.read_json(paths["ir"], {})
+        screen = ir["screens"][0]
+        source_file = screen["source"]["file"]
+        ir["review"]["audit"] = {
+            "findings": [{
+                "id": "finding-a",
+                "title": "Example",
+                "severity": "high",
+                "screenId": screen["id"],
+                "status": "open",
+                "sourceTarget": source_file,
+            }]
+        }
+        update = uidw.update_finding_decisions(ir, ["1"], "accepted")
+        self.assertEqual(update["findingIds"], ["finding-a"])
+        ir_path = self.base / "review" / "ui-ir.json"
+        uidw.write_json(ir_path, ir)
+        proposal = uidw.prepare_agent_job(self.repo, ir_path, ir, "proposal", ir_path.parent / "proposal.json")
+        implementation = uidw.prepare_agent_job(self.repo, ir_path, ir, "implementation", ir_path.parent / "implementation.json")
+        self.assertEqual(proposal["findingIds"], ["finding-a"])
+        self.assertEqual(implementation["sourceTargets"], [source_file])
+        self.assertFalse(uidw.read_json(ir_path.parent / "proposal.json", {})["sourceChangeAllowed"])
+        self.assertTrue(uidw.read_json(ir_path.parent / "implementation.json", {})["sourceChangeAllowed"])
+
+    def test_mock_scenario_requires_repeated_collection_items(self) -> None:
+        ir = {
+            "nodes": {
+                "root": {"type": "container", "children": ["results"]},
+                "results": {
+                    "type": "list",
+                    "dataDriven": True,
+                    "collection": {"minMockItems": 2},
+                    "children": ["empty"],
+                },
+                "empty": {"type": "text", "text": "No results", "emptyState": True},
+                "item-1": {"type": "container", "children": [], "mockOnly": True},
+                "item-2": {"type": "container", "children": [], "mockOnly": True},
+            },
+            "screens": [{
+                "id": "results-screen",
+                "name": "Results",
+                "root": "root",
+                "defaultScenarioId": "mock-data",
+                "scenarios": [{"id": "mock-data", "label": "Mock data", "nodeOverrides": {}}],
+            }],
+        }
+
+        empty_report = uidw.scenario_report(ir)
+        self.assertEqual(empty_report["status"], "fail")
+        self.assertEqual(empty_report["issues"][0]["code"], "mock-collection-empty")
+
+        ir["screens"][0]["scenarios"][0]["nodeOverrides"] = {
+            "results": {"children": ["item-1", "item-2"]}
+        }
+        populated_report = uidw.scenario_report(ir)
+        self.assertEqual(populated_report["status"], "pass")
+        self.assertEqual(
+            populated_report["screens"][0]["scenarios"][0]["collectionCounts"]["results"],
+            2,
+        )
 
 
 if __name__ == "__main__":

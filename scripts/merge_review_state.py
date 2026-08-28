@@ -97,8 +97,8 @@ def validate_feedback(ir: dict[str, Any], feedback: dict[str, Any]) -> list[str]
     nodes = ir.get("nodes", {})
     screen_ids = {item.get("id") for item in ir.get("screens", [])}
     version_ids = {item.get("id") for item in review.get("versions", [])}
-    if feedback.get("version") != 1:
-        errors.append("Feedback version must be 1")
+    if feedback.get("version") not in {1, 2}:
+        errors.append("Feedback version must be 1 or 2")
     if review.get("sessionId") and feedback.get("sessionId") != review.get("sessionId"):
         errors.append("Feedback sessionId does not match this IR review session")
     if feedback.get("activeVersion") not in version_ids:

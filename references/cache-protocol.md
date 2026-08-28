@@ -18,7 +18,9 @@ The project key is derived from the normalized absolute repository path. The ins
 
 - `cache-state.json`: scanner/config versions, candidate manifest, content fingerprints, and reusable per-file analysis.
 - `ui-scan.json`: aggregated UI inventory from current per-file records.
-- `ui-ir.json`: starter semantic map used as cached discovery context, not a finished review deliverable.
+- `ui-ir.json`: synchronized projection combining the generated source index with preserved authored detail; still not a finished review deliverable.
+- `design-model.json`: durable authored screen/node/scenario detail preserved across source-index refreshes.
+- `review-state.json`: findings, annotations, decisions, and proposal metadata preserved separately from discovery.
 - `ui-context.json`: bounded model-facing summary with changed files and priority reads.
 - `ui-context-<screen>.json`: one screen subtree and its directly referenced sources.
 - `sync-report.json`: last invalidation reason, changed files, and affected screen IDs.
@@ -31,9 +33,14 @@ uidw --repo <repo> init
 uidw --repo <repo> status --json
 uidw --repo <repo> sync
 uidw --repo <repo> context --screen <screen-id> --json
+uidw --repo <repo> context --screen <screen-id> --budget 4000 --format markdown
 uidw --repo <repo> map --output <docs-or-artifact-dir>/ui-graph.json
+uidw --repo <repo> diff
+uidw --repo <repo> workbench --output-dir <artifact-dir>
+uidw --repo <repo> check --ir <artifact-dir>/ui-ir.json --level full
 uidw --repo <repo> doctor --json
 uidw --repo <repo> ui-mode --enable
+uidw --repo <repo> mock-data --set representative
 ```
 
 `context` performs lazy synchronization when `autoSync` is enabled. Use `sync --force` after scanner/schema upgrades or known discovery errors. Use `--verify-content` when timestamps may be unreliable, such as restored archives or unusual network filesystems.
@@ -43,6 +50,8 @@ uidw --repo <repo> ui-mode --enable
 Candidate files use size, nanosecond mtime, and SHA-256. Unchanged metadata reuses the existing digest; changed metadata is rehashed. Only added or content-modified files are analyzed again. Removed files drop their cached record. A theme or navigation change invalidates all screens; a screen/component change invalidates mapped dependents; scanner/config/cache-version changes force full reconstruction.
 
 Metadata-only changes update the manifest without rescanning. `--verify-content` rehashes every candidate when correctness is more important than I/O cost.
+
+Every JSON write uses a same-directory temporary file plus atomic replacement. A short-lived project state lock serializes concurrent writers. Configuration schema upgrades keep `config.v<old>.backup.json`; disposable scanner/cache versions rebuild automatically. Source changes never discard authored scenarios, proposals, findings, or annotations: bindings for impacted screens and nodes are retained with `sourceState: stale` until an agent reconciles them.
 
 Do not run a watcher, bridge server, emulator, or target application. Lazy command-boundary synchronization is deterministic, portable, and inexpensive for agent workflows.
 

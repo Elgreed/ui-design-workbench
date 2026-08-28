@@ -189,12 +189,17 @@ async function main() {
         const diagnosticAction = [...document.querySelectorAll('[data-accept-diagnostic]')]
           .find(button => button.closest('.diagnostic-card')?.dataset.result !== 'pass');
         diagnosticAction?.click();
+        const diagnosticFindingCreated = Boolean(diagnosticAction);
         await runAutomatedReview();
         const actionableChecks = (state.diagnostics?.checks || []).filter(item => item.result !== 'pass').length;
         const actionableGroups = groupDiagnosticChecks((state.diagnostics?.checks || []).filter(item => item.result !== 'pass')).length;
         const totalAfter = Number(document.querySelector('.finding-total')?.textContent || 0);
         const autoReviewFindings = state.runtimeFindings.length;
-        const selected = Number(document.querySelector('.fix-queue-count')?.textContent || 0);
+        const selected = selectedFindings().length;
+        const selectionNextStep = selected === 0
+          || (state.reviewSection === 'problems'
+            && document.querySelector('.review-next-action')?.dataset.action === 'changes'
+            && document.querySelector('.review-next-action')?.textContent?.includes(String(selected)));
         const request = selected && typeof fixRequestPayload === 'function' ? fixRequestPayload() : null;
         const expertRequest = typeof expertReviewRequestPayload === 'function' ? expertReviewRequestPayload() : null;
         const expertHandoff = window.__uiPreviewDiagnostics?.agentHandoff?.('expert');
@@ -215,7 +220,8 @@ async function main() {
         const contextProposalAction = ['proposal', 'compare-selected', 'approve', 'source'].includes(document.querySelector('.review-next-action')?.dataset.action);
         const smokeFinding = {
           id: 'smoke-imported-finding', title: 'Smoke imported finding', category: 'smoke', severity: 'low', confidence: 'high',
-          screenId: screens[0].id, observation: 'Imported during smoke.', impact: 'None.', recommendation: 'None.',
+          screenId: screens[0].id, nodeId: nodeIdsForScreen(screens[0])[0] || null,
+          observation: 'Imported during smoke.', impact: 'None.', recommendation: 'None.',
           evidence: [{ type: 'source', ref: 'smoke', note: 'Synthetic smoke fixture.' }], effort: 'small', proposalVersionId: 'smoke-imported-proposal'
         };
         importExpertReviewData({
@@ -335,6 +341,7 @@ async function main() {
         setScreen(screens[0].id, 'single');
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const resolvedMarkerHidden = !document.querySelector('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]');
+        const proposalMarkersHidden = document.querySelectorAll('[data-open-finding],[data-finding-popover]').length === 0;
         state.activeVersion = baselineVersion;
         versionSelect.value = state.activeVersion;
         renderView();
@@ -343,7 +350,10 @@ async function main() {
         setView('compare');
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const resolvedMarkersStayOnBaseline = document.querySelectorAll('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]').length === 1;
-        const versionArchitectureWorks = resolvedMarkerHidden && baselineMarkerRestored && resolvedMarkersStayOnBaseline;
+        const compareFindingMarkersBaselineOnly = [...document.querySelectorAll('[data-open-finding],[data-finding-popover]')]
+          .every(marker => marker.dataset.markerDevice?.includes(':' + state.compareBaseVersion + ':'));
+        const versionArchitectureWorks = resolvedMarkerHidden && proposalMarkersHidden && baselineMarkerRestored
+          && resolvedMarkersStayOnBaseline && compareFindingMarkersBaselineOnly;
         const markerBeforeZoom = document.querySelector('[data-open-finding="' + CSS.escape(smokeFinding.id) + '"]')?.getBoundingClientRect();
         const deviceBeforeZoom = document.querySelector('.device[data-version-id="' + CSS.escape(state.compareBaseVersion) + '"]')?.getBoundingClientRect();
         const anchorBeforeZoom = document.querySelector('.device[data-version-id="' + CSS.escape(state.compareBaseVersion) + '"] .device-content')?.getBoundingClientRect();
@@ -387,16 +397,21 @@ async function main() {
           }
         }
         const markerLayoutStable = markerGroups.size > 0 && markerOverlaps === 0;
-        const linkedMarker = document.querySelector('.finding-pin-leader + .finding-pin');
+        document.querySelectorAll('[data-collapse-finding]').forEach(button => button.click());
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const linkedMarker = document.querySelector('.finding-pin-leader + [data-open-finding="' + CSS.escape(smokeFinding.id) + '"]')
+          || document.querySelector('.finding-pin-leader + .finding-pin');
         const leadersHiddenByDefault = [...document.querySelectorAll('.finding-pin-leader')]
-          .every(leader => Number(getComputedStyle(leader).opacity) === 0);
+          .every(leader => leader.nextElementSibling?.matches(':hover') || Number(getComputedStyle(leader).opacity) === 0);
         linkedMarker?.click();
         await new Promise(resolve => setTimeout(resolve, 180));
-        const openLeader = document.querySelector('.finding-pin-leader + .finding-pin-card');
+        const openLeader = document.querySelector('.finding-pin-leader + [data-finding-popover="' + CSS.escape(smokeFinding.id) + '"]')
+          || document.querySelector('.finding-pin-leader + .finding-pin-card');
         const leaderRevealsForOpenCard = !linkedMarker || Boolean(openLeader && Number(getComputedStyle(openLeader).opacity) === 1);
         document.querySelector('[data-collapse-finding]')?.click();
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const markerLeaderWorks = leadersHiddenByDefault && leaderRevealsForOpenCard;
+        const markerLeaderMetrics = { leadersHiddenByDefault, leaderRevealsForOpenCard, linkedMarker: Boolean(linkedMarker), openLeader: Boolean(openLeader), openLeaderOpacity: openLeader ? getComputedStyle(openLeader).opacity : null };
         const railCommandsWork = ['inspect', 'review', 'comments'].every(tab => Boolean(document.querySelector('.workbench-rail [data-inspector-tab="' + tab + '"]')))
           && document.querySelectorAll('.workbench-rail .rail-menu').length === 2
           && Boolean(document.querySelector('.workbench-rail .rail-menu.language-menu .locale-current'))
@@ -430,20 +445,26 @@ async function main() {
         const localeMetrics = { englishCanvas: document.querySelector('.canvas-tools')?.getAttribute('aria-label'), englishVersionTitle: document.querySelector('.header-version-picker')?.getAttribute('title'), englishCompare: document.querySelector('.mode-button[data-view="compare"] .button-label')?.textContent?.trim() };
         const englishLocaleWorks = document.documentElement.lang === 'en'
           && document.querySelector('.canvas-tools')?.getAttribute('aria-label') === 'Canvas tools'
-          && document.querySelector('.header-version-picker')?.getAttribute('title') === 'Active mockup version'
+          && document.querySelector('.header-version-picker')?.getAttribute('title') === 'Currently displayed mockup'
           && document.querySelector('.mode-button[data-view="compare"] .button-label')?.textContent?.trim() === 'Compare';
         setWorkbenchLocale('ru', { remember: false, updateLocation: false });
         Object.assign(localeMetrics, { russianCanvas: document.querySelector('.canvas-tools')?.getAttribute('aria-label'), russianVersionTitle: document.querySelector('.header-version-picker')?.getAttribute('title'), russianCompare: document.querySelector('.mode-button[data-view="compare"] .button-label')?.textContent?.trim() });
         const russianLocaleRestores = document.documentElement.lang === 'ru'
           && document.querySelector('.canvas-tools')?.getAttribute('aria-label') === 'Инструменты холста'
-          && document.querySelector('.header-version-picker')?.getAttribute('title') === 'Активная версия макета'
+          && document.querySelector('.header-version-picker')?.getAttribute('title') === 'Какой макет сейчас показан'
           && document.querySelector('.mode-button[data-view="compare"] .button-label')?.textContent?.trim() === 'Сравнить';
         for (const id of Object.keys(state.findingDecisions)) state.findingDecisions[id] = 'pending';
         state.findingDecisions[smokeFinding.id] = 'accepted';
         renderFindings();
         const sourceBeforeApproval = document.querySelector('.review-next-action')?.dataset.action !== 'source';
         approveActiveVersion();
+        setReviewSection('summary');
+        const sourceHiddenOnSummary = document.querySelector('.review-next-action')?.dataset.action !== 'source';
+        setReviewSection('problems');
+        const sourceHiddenOnProblems = document.querySelector('.review-next-action')?.dataset.action !== 'source';
+        setReviewSection('changes');
         const sourceAfterApproval = document.querySelector('.review-next-action')?.dataset.action === 'source';
+        const applyOnlyOnFixStep = sourceHiddenOnSummary && sourceHiddenOnProblems && sourceAfterApproval;
         const sourceRequest = typeof sourceRequestPayload === 'function' ? sourceRequestPayload() : null;
         const implementationHandoff = window.__uiPreviewDiagnostics?.agentHandoff?.('implement');
         const directFixEntryPoint = Boolean(document.querySelector('.fix-all-source'));
@@ -524,12 +545,15 @@ async function main() {
           totalAfter,
           actionableChecks,
           actionableGroups,
+          diagnosticFindingCreated,
           autoReviewFindings,
-          autoReviewButton: Boolean(document.querySelector('.run-review')),
+          autoReviewButton: Boolean(document.querySelector('.review-next-action')),
           agentReviewButtonEnabled: document.querySelector('.open-agent-review')?.disabled === false,
           expertReviewButtonEnabled: document.querySelector('.export-review-request')?.disabled === false,
           expertRequestValid: expertRequest?.type === 'ui-design-workbench-expert-review-request'
             && expertRequest?.runtimeDiagnostics?.status === 'complete'
+            && expertRequest?.activeVersion === baselineVersion
+            && expertRequest?.reviewVersionId === baselineVersion
             && expertRequest?.screenIds?.length === screens.length
             && expertRequest?.requiredChatReport?.includes('plain numbered list')
             && expertRequest?.requiredChatReport?.includes('Do not add a duplicate plain-text report to the HTML')
@@ -538,11 +562,13 @@ async function main() {
             && expertHandoff?.provider === 'generic'
             && expertHandoff?.url === null
             && expertHandoff?.path === previewContext.artifactDir
+            && expertHandoff?.context?.activeVersion === baselineVersion
+            && expertHandoff?.context?.reviewVersionId === baselineVersion
             && expertHandoff?.prompt?.includes('ui-design-workbench')
             && expertHandoff?.prompt?.includes('Не изменяй исходный проект'),
-          proposalHandoffValid: proposalHandoff?.supported === true
+          proposalHandoffValid: selected === 0 || (proposalHandoff?.supported === true
             && proposalHandoff?.context?.acceptedFindingIds?.length === selected
-            && proposalHandoff?.context?.sourceChangeAllowed === false,
+            && proposalHandoff?.context?.sourceChangeAllowed === false),
           implementationHandoffValid: implementationHandoff?.supported === true
             && implementationHandoff?.context?.sourceChangeAllowed === true
             && Boolean(implementationHandoff?.context?.projectRoot)
@@ -579,6 +605,7 @@ async function main() {
           markerLayoutStable,
           markerOverlaps,
           markerLeaderWorks,
+          markerLeaderMetrics,
           middleMousePanWorks: middlePanWorks && middlePanReleases,
           middlePanMetrics,
           localeSwitchWorks: englishLocaleWorks && russianLocaleRestores,
@@ -587,11 +614,13 @@ async function main() {
           auditLinks: document.querySelectorAll('[data-audit-findings]').length,
           linkedVisible,
           selected,
+          selectionNextStep,
           requestFindings: request?.acceptedFindingIds?.length || 0,
           runtimeActionable,
           reviewEntryPoint: Boolean(document.querySelector('[data-inspector-tab="review"]')),
           sourceBeforeApproval,
           sourceAfterApproval,
+          applyOnlyOnFixStep,
           sourceApprovalGuard: sourceRequest?.sourceChangeAllowed === true
             && Boolean(sourceRequest?.projectRoot)
             && Array.isArray(sourceRequest?.requiredChatReport)
@@ -614,21 +643,24 @@ async function main() {
     }
     const workflow = workflowResponse.result?.value || {};
     if (!workflow.reviewEntryPoint) throw new Error('Review workflow entry point is missing');
+    const expectedRuntimeFindings = workflow.actionableGroups + (workflow.diagnosticFindingCreated ? 1 : 0);
+    const actionableWorkflowFailed = workflow.diagnosticFindingCreated
+      ? (!workflow.contextProposalAction || workflow.selected !== 1 || workflow.requestFindings !== 1 || !workflow.runtimeActionable)
+      : (workflow.selected !== 0 || workflow.requestFindings !== 0 || workflow.runtimeActionable);
     if (workflow.totalBefore > 0 && (
-      !workflow.auditLinks || !workflow.linkedVisible || workflow.totalAfter !== workflow.totalBefore + workflow.actionableGroups + 1
-      || workflow.autoReviewFindings !== workflow.actionableGroups + 1 || !workflow.autoReviewButton
+      !workflow.auditLinks || !workflow.linkedVisible || workflow.totalAfter !== workflow.totalBefore + expectedRuntimeFindings
+      || workflow.autoReviewFindings !== expectedRuntimeFindings || !workflow.autoReviewButton
       || !workflow.agentReviewButtonEnabled || !workflow.expertReviewButtonEnabled || !workflow.expertRequestValid
       || !workflow.expertHandoffValid || !workflow.proposalHandoffValid || !workflow.implementationHandoffValid || !workflow.directFixEntryPoint
       || !workflow.handoffPanelWorks
-      || !workflow.contextProposalAction || !workflow.importWorks || !workflow.compareVariantsWork || !workflow.reviewSectionsWork
+      || actionableWorkflowFailed || !workflow.importWorks || !workflow.compareVariantsWork || !workflow.reviewSectionsWork
       || !workflow.layerControlsWork || !workflow.prototypeForcesInteraction || !workflow.prototypeNavigationWorks || !workflow.prototypeTreePreservesMode
       || !workflow.screenScenarioControlsWork || !workflow.stateGalleryWorks || !workflow.screenScenarioDiagnosticsWork || !workflow.markerNumberMatches || !workflow.markerPopoverOpens
       || !workflow.markerPopoverCollapses || !workflow.commentPopoverOpens || !workflow.commentPopoverCollapses
       || !workflow.userCommentHasDistinctColor || !workflow.markersFollowComparedViews || !workflow.railCommandsWork || !workflow.railMenusWork || !workflow.railFileGeometryWorks
       || !workflow.markersToggleWork || !workflow.versionArchitectureWorks
       || !workflow.markerTracksZoom || !workflow.markerLayoutStable || !workflow.markerLeaderWorks || !workflow.middleMousePanWorks || !workflow.localeSwitchWorks
-      || workflow.selected !== 1 || workflow.requestFindings !== 1 || !workflow.runtimeActionable
-      || !workflow.sourceBeforeApproval || !workflow.sourceAfterApproval
+      || !workflow.selectionNextStep || !workflow.sourceBeforeApproval || !workflow.sourceAfterApproval || !workflow.applyOnlyOnFixStep
       || !workflow.sourceApprovalGuard || !workflow.revisionVisible
       || !workflow.selectionPreserved || !workflow.scrollPreserved
       || !workflow.inspectTabWorks || !workflow.commentsTabWorks || !workflow.reviewTabWorks

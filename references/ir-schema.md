@@ -75,6 +75,8 @@ Use JSON with `version: 1`. The renderer tolerates omitted optional fields but e
       "route": "/home",
       "fragment": "#home",
       "logicalView": true,
+      "navigationFlowId": "signed-in-app",
+      "navigationEntry": true,
       "platform": "android",
       "source": {"file": "feature/home/HomeScreen.kt", "line": 18, "symbol": "HomeScreen"},
       "confidence": "high",
@@ -252,6 +254,7 @@ An evidence-based review uses this shape:
           "confidence": "high",
           "screenId": "project-form",
           "nodeId": "project-submit-error",
+          "reviewVersionId": "baseline",
           "observation": "The error replaces the form and removes the entered values.",
           "impact": "The user must repeat work and cannot identify which value failed.",
           "recommendation": "Keep entered values, place an inline summary above the form, and focus it after failure.",
@@ -270,7 +273,7 @@ An evidence-based review uses this shape:
 }
 ```
 
-Finding IDs are stable across iterations. `severity` is `blocker`, `high`, `medium`, or `low`; `confidence` is `high`, `medium`, or `low`; `effort` is `small`, `medium`, or `large`. Each finding needs at least one evidence entry with `type`, `ref`, and `note`. Use `systemic: true` plus `instances` for one repeated root cause. A finding links to `proposalVersionId` or provides `noProposalReason`. Correction versions may list `findingIds` so the workbench can open the applicable comparison directly. They separately list only verified corrections in `resolvedFindingIds`; those findings are hidden on that version but retained on the immutable baseline. Do not infer resolution merely from `findingIds`.
+Finding IDs are stable across iterations. `reviewVersionId` identifies the immutable version that was actually reviewed and defaults to `review.baselineVersion`; switching Before/After never changes it. Finding markers render only on that reviewed version, so proposal/After views cannot inherit baseline errors. `severity` is `blocker`, `high`, `medium`, or `low`; `confidence` is `high`, `medium`, or `low`; `effort` is `small`, `medium`, or `large`. Each finding needs at least one evidence entry with `type`, `ref`, and `note`. Use `systemic: true` plus `instances` for one repeated root cause. A finding links to `proposalVersionId` or provides `noProposalReason`. Correction versions may list `findingIds` so the workbench can open the applicable comparison directly. They separately list corrections in `resolvedFindingIds`, but resolution becomes final only after targeted verification or implementation updates the finding status. Do not infer resolution merely from `findingIds`.
 
 For a completed expert audit, `scope.interactions`, `scope.uxLenses`, `interactionChecks`, `layoutChecks`, and `uxAssessment` are required. Interaction and layout results are `pass`, `fail`, or `not-run`; `complete` audits cannot include `not-run`. Every failed interaction/layout entry needs non-empty `findingIds`, and every referenced ID must exist in `audit.findings`. `layoutChecks.kind` must cover `typography`, `sibling-alignment`, `control-padding`, `text-containment`, and `icon-label-optics`. UX statuses are `pass`, `finding`, or `gap`; `finding` requires valid `findingIds`. Use `gap` only when `validationGaps` explains the missing evidence.
 
@@ -340,3 +343,7 @@ The renderer automatically provides:
 - `Interact` / `Inspect` / `Comment`: an independent switch for clicks, provenance inspection, or node-anchored annotations.
 
 Supported actions are `navigate`, `back`, `set-node-state`, `toggle-node-state` (alias `toggle`), and `reset-state`. `navigate` uses a screen ID in `target`. State actions use a node ID in `target`, plus `state` and optional `offState`. Define visual variants in `node.states`, where each named variant can override node fields and merge `layout` and `style`.
+
+Runtime interactivity is derived from the rendered native control, a non-empty `action.type`, or an interactive `semantics.role`. Provenance attributes with empty values are not interaction signals and the renderer omits `data-action` when no action is declared. Target-size, accessible-name, state, and keyboard checks share this single predicate so a static `container`, `card`, `text`, navigation wrapper, or screen root cannot enter the interactive gates merely because provenance metadata exists.
+
+Navigation reachability is evaluated per flow rather than from the first screen in the whole review. By default, screens with the same non-empty `route` form one flow; otherwise they use the shared `review-default` flow. Set `screen.navigationFlowId` when several independent interfaces share a route or one flow spans multiple routes. Mark `screen.navigationEntry: true` for explicit entry screens, or add `entryScreenIds` to the `navigation-flow` diagnostic scenario. Without an explicit entry, the first screen in that flow is the deterministic root. Cross-flow `navigate` actions still have their targets validated, but they do not make unrelated review areas mutually reachable.

@@ -6,15 +6,27 @@
   "required": ["type", "version", "provider", "kind", "artifactDir", "allowedWrites", "sourceChangeAllowed"],
   "properties": {
     "type": { "const": "ui-design-workbench-agent-job" },
-    "version": { "const": 1 },
+    "version": { "enum": [1, 2] },
     "provider": { "type": "string" },
-    "kind": { "enum": ["expert", "proposal", "source-plan"] },
+    "kind": { "enum": ["expert", "proposal", "source-plan", "implementation"] },
     "artifactDir": { "type": "string" },
     "scope": { "enum": ["all", "current"] },
     "screenIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
     "acceptedFindingIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
     "allowedWrites": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
-    "sourceChangeAllowed": { "const": false }
+    "projectRoot": { "type": "string" },
+    "sourceTargets": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "sourceChangeAllowed": { "type": "boolean" }
   },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "implementation" } }, "required": ["kind"] },
+      "then": {
+        "properties": { "sourceChangeAllowed": { "const": true }, "sourceTargets": { "minItems": 1 } },
+        "required": ["projectRoot", "sourceTargets"]
+      },
+      "else": { "properties": { "sourceChangeAllowed": { "const": false } } }
+    }
+  ],
   "additionalProperties": true
 }

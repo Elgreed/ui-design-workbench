@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Elgreed/ui-design-workbench/schemas/uidw-config.schema.json",
+  "title": "UI Design Workbench project configuration",
+  "type": "object",
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "autoSync": { "type": "boolean" },
+    "cacheMode": { "enum": ["user", "project"] },
+    "compactContext": { "type": "boolean" },
+    "maxContextScreens": { "type": "integer", "minimum": 1 },
+    "maxContextComponents": { "type": "integer", "minimum": 1 },
+    "handoffProvider": { "type": "string", "minLength": 1 },
+    "uiMode": {
+      "type": "object",
+      "required": ["enabled"],
+      "properties": { "enabled": { "type": "boolean" } },
+      "additionalProperties": false
+    },
+    "mockData": {
+      "type": "object",
+      "required": ["mode", "seed"],
+      "properties": {
+        "mode": { "enum": ["none", "representative", "exhaustive"] },
+        "seed": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}
