@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import uidw
+from native_render_registry import native_render_status
 from scoped_context import apply_patch_file, build_scoped_context
 
 
@@ -20,7 +21,9 @@ SERVER_INSTRUCTIONS = (
     "Use ui_prepare_job for review, proposal, or implementation handoffs. Review and proposal work "
     "must preserve immutable baseline UI and return sparse ui-ir.patch.json operations; application "
     "source changes require an explicit implementation request. Use ui_build_preview for projection "
-    "checks only; do not infer UI/UX findings unless the user explicitly requests a review."
+    "checks only; do not infer UI/UX findings unless the user explicitly requests a review. "
+    "For Android or Apple visual accuracy, call ui_native_status and never describe source projection as a native render. "
+    "Native builds, simulators, and captures are explicit-only operations."
 )
 
 
@@ -235,6 +238,14 @@ def create_server(default_repo: Path, name: str = "UI Design Workbench") -> Any:
     ) -> dict[str, Any]:
         """Render and projection-check the HTML workbench; never auto-review UX."""
         return build_preview(repo or None, default_repo, ui_ir_file or None, output_dir or None, level)
+
+    @server.tool()
+    def ui_native_status(repo: str = "", platform: str = "all") -> dict[str, Any]:
+        """Discover native Android/Apple render providers without executing builds or simulators."""
+        if platform not in {"all", "android", "apple"}:
+            raise ValueError("platform must be all, android, or apple")
+        root = _root(repo or None, default_repo)
+        return native_render_status(root, uidw.state_paths(root)["native"], platform)
 
     @server.tool()
     def ui_fidelity(identifier: str, repo: str = "", ui_ir_file: str = "") -> dict[str, Any]:

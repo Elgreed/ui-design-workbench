@@ -514,6 +514,8 @@ def fidelity_audit(ir: dict[str, Any]) -> dict[str, Any]:
     if not target_platforms:
         target_platforms = {platform_family(item) for item in ir.get("platforms", [])}
         target_platforms.discard(None)
+    native_platforms = {"android", "android-tv", "ios", "macos"}
+    native_evidence_required = bool(target_platforms & native_platforms)
 
     node_platforms: dict[str, set[str]] = {node_id: set() for node_id in nodes}
 
@@ -871,6 +873,10 @@ def fidelity_audit(ir: dict[str, Any]) -> dict[str, Any]:
         "contrastCoverage": contrast_coverage,
         "stateCoverage": state_coverage,
         "componentCoverage": component_coverage,
+        "visualFidelityTier": "structural" if native_evidence_required else "projection",
+        "nativeEvidenceRequired": native_evidence_required,
+        "nativeEvidenceCoverage": 0 if native_evidence_required else 1,
+        "nativeExecutionStarted": False,
         "catalogComponents": len(catalog_entries),
         "screenCoverage": round((len(expected_screen_keys) - len(missing_screen_keys)) / len(expected_screen_keys), 3) if expected_screen_keys else 1,
         "routeCoverage": round((len(expected_routes) - len(missing_routes)) / len(expected_routes), 3) if expected_routes else 1,
@@ -1533,8 +1539,10 @@ def render_html(
 ) -> str:
     project = ir.get("project", {})
     screens = ir.get("screens", [])
-    warnings = ir.get("warnings", [])
+    warnings = list(ir.get("warnings", []))
     audit = ir.get("fidelityAudit", {})
+    if audit.get("nativeEvidenceRequired") and not audit.get("nativeExecutionStarted"):
+        warnings.append("HTML показывает структурную проекцию. Нативный Android/iOS-рендер не запускался, визуальная точность не подтверждена.")
     font_faces: list[str] = []
     for font in ir.get("fonts", []):
         if not font.get("resolvedAsset") or not font.get("family"):
@@ -1573,12 +1581,20 @@ def render_html(
         f'<span>Размер целей:</span> {audit.get("targetCoverage", 0):.0%} · <span>Контраст:</span> {audit.get("contrastCoverage", 0):.0%} · '
         f'<span>Состояния:</span> {audit.get("stateCoverage", 0):.0%}<br>'
     )
+    native_markup = ""
+    if audit.get("nativeEvidenceRequired"):
+        native_status = "проверен" if audit.get("nativeExecutionStarted") and audit.get("nativeEvidenceCoverage", 0) > 0 else "не проверен"
+        native_markup = (
+            f'<span>Визуальная точность:</span> <span data-i18n-skip>{html.escape(str(audit.get("visualFidelityTier", "structural")))}</span> · '
+            f'<span>Нативный снимок:</span> {native_status}<br>'
+        )
     audit_markup = (
         f'<details class="audit-panel"><summary>Проверка покрытия</summary><p class="audit"><span>Режим:</span> <span data-i18n-skip>{html.escape(str(audit.get("designMode", "reconstruct")))}</span><br>'
         f'<span>{origin_label}:</span> {origin_value:.0%} · '
         f'<span>Оформление:</span> {audit.get("appearanceCoverage", 0):.0%} · '
         f'<span>Высокая уверенность:</span> {audit.get("highConfidenceCoverage", 0):.0%} · '
         f'<span>Компоненты:</span> {audit.get("componentCoverage", 1):.0%} ({audit.get("catalogComponents", 0)})<br>'
+        f'{native_markup}'
         f'{standards_markup}'
         f'<span>Экраны:</span> {audit.get("screenCoverage", 0):.0%} · <span>Маршруты:</span> {audit.get("routeCoverage", 0):.0%} · '
         f'<span>Цели меню:</span> {audit.get("navigationCoverage", 1):.0%} · '

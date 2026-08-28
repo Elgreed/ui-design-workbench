@@ -56,6 +56,10 @@ def adapter_capabilities() -> list[dict[str, Any]]:
             "platforms": list(getattr(adapter, "platforms", ())),
             "extensions": list(getattr(adapter, "extensions", ())),
             "maturity": str(getattr(adapter, "maturity", "conservative")),
+            "structuralTier": str(getattr(adapter, "structural_tier", "translated")),
+            "visualTier": str(getattr(adapter, "visual_tier", "none")),
+            "nativeEvidenceRequired": bool(getattr(adapter, "native_evidence_required", False)),
+            "nativeProviders": list(getattr(adapter, "native_providers", ())),
             "limitations": list(getattr(adapter, "limitations", ())),
         }
         for adapter in _ADAPTERS

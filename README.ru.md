@@ -238,6 +238,14 @@ uidw fidelity explain <node-id-or-evidence-id> --ir <artifacts>/ui-ir.json
 
 Встроенные адаптеры поддерживают HTML/CSS, React/JSX, Vue, Svelte, Jetpack Compose, Android Views XML, SwiftUI, Storyboard/XIB, WinUI/WPF XAML, Flutter и React Native. Неподдерживаемый синтаксис явно указывается и не заменяется придуманным UI.
 
+Адаптеры Android и Apple переносят структуру, но не являются нативными рендерами. Доступный точный путь можно проверить без запуска сборки или симулятора:
+
+```sh
+uidw --repo <repo> native status
+```
+
+Для MCP та же ограниченная операция называется `ui_native_status`. Android-discovery распознаёт Compose Screenshot, Paparazzi, Roborazzi и готовность эмулятора. Apple-discovery распознаёт Xcode Preview, snapshot-тесты и готовность симулятора; для нативного Apple-снимка всегда нужен macOS-воркер с Xcode. Нативное состояние кешируется отдельно от базового IR, а снимок становится устаревшим после изменения исходников.
+
 Для Flutter и React Native необходимо указать целевую платформу перед платформенными UX-выводами.
 
 ## Основные команды
@@ -249,6 +257,7 @@ uidw fidelity explain <node-id-or-evidence-id> --ir <artifacts>/ui-ir.json
 | `uidw --repo <repo> scope ...` | Создать ограниченный контекст экрана/замечаний для агента |
 | `uidw --repo <repo> patch ...` | Проверить или применить разреженные операции IR |
 | `uidw --repo <repo> workbench ...` | Собрать и проверить HTML-проекцию |
+| `uidw --repo <repo> native status` | Найти нативные Android/Apple-провайдеры без их запуска |
 | `uidw --repo <repo> check --ir <file> --level full` | Повторить проверки переноса без UI/UX-аудита |
 | `uidw --repo <repo> review ...` | Явно запустить UI/UX-ревью |
 | `uidw --repo <repo> scenarios validate --ir <file>` | Проверить сценарии и наполненные коллекции |
@@ -307,4 +316,4 @@ fixtures/golden/            Регрессионные fixtures адаптеро
 
 ## Версия
 
-Текущая версия CLI: `0.3.5`.
+Текущая версия CLI: `0.4.0`.

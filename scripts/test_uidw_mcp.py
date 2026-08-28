@@ -35,6 +35,8 @@ class UidwMcpTests(unittest.TestCase):
         self.assertIn("sparse ui-ir.patch.json", uidw_mcp.SERVER_INSTRUCTIONS)
         self.assertIn("explicit implementation request", uidw_mcp.SERVER_INSTRUCTIONS)
         self.assertIn("ui_configure", uidw_mcp.SERVER_INSTRUCTIONS)
+        self.assertIn("ui_native_status", uidw_mcp.SERVER_INSTRUCTIONS)
+        self.assertIn("never describe source projection as a native render", uidw_mcp.SERVER_INSTRUCTIONS)
 
     def test_project_summary_exposes_required_setup_instead_of_routing_to_scope(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

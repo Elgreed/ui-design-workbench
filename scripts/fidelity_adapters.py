@@ -89,6 +89,9 @@ class WebAdapter:
     platforms = ("web",)
     extensions = (".html", ".htm", ".css")
     maturity = "golden"
+    structural_tier = "translated"
+    visual_tier = "projection"
+    native_evidence_required = False
     limitations = ("simple CSS selectors only", "runtime-generated DOM is unsupported")
 
     def supports(self, context: SourceContext) -> bool:
@@ -249,7 +252,11 @@ class ComposeAdapter:
     id = "compose"
     platforms = ("android", "android-tv")
     extensions = (".kt", ".kts")
-    maturity = "golden"
+    maturity = "structural"
+    structural_tier = "translated"
+    visual_tier = "none"
+    native_evidence_required = True
+    native_providers = ("android-compose-screenshot", "paparazzi", "roborazzi", "android-emulator")
     limitations = ("supported Compose primitives and modifiers only", "custom composables remain explicit unsupported entries")
 
     def supports(self, context: SourceContext) -> bool:

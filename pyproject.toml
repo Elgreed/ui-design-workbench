@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ui-design-workbench-cli"
-version = "0.3.5"
+version = "0.4.0"
 description = "Repository UI indexing, graph, preview, and deterministic review CLI"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -41,6 +41,10 @@ py-modules = [
   "fidelity_adapter_api",
   "fidelity_adapters",
   "fidelity_platform_adapters",
+  "native_render_contracts",
+  "native_render_android",
+  "native_render_apple",
+  "native_render_registry",
   "quality_common",
   "render_preview",
   "coverage_report",

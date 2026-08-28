@@ -238,6 +238,14 @@ uidw fidelity explain <node-id-or-evidence-id> --ir <artifacts>/ui-ir.json
 
 Built-in adapters cover HTML/CSS, React/JSX, Vue, Svelte, Jetpack Compose, Android Views XML, SwiftUI, Storyboard/XIB, WinUI/WPF XAML, Flutter, and React Native. Unsupported syntax is reported instead of being replaced with invented UI.
 
+Android and Apple source adapters are structural translators, not native renderers. Check the available native path without starting a build or simulator:
+
+```sh
+uidw --repo <repo> native status
+```
+
+The same bounded operation is available to MCP clients as `ui_native_status`. Android discovery recognizes Compose Screenshot, Paparazzi, Roborazzi, and emulator prerequisites. Apple discovery recognizes Xcode previews, snapshot tests, and simulator prerequisites; an Apple capture always requires a macOS Xcode worker. Native state is cached separately from baseline IR and matching captures are invalidated when source changes.
+
 Flutter and React Native require an explicit target platform before platform-specific UX conclusions can be made.
 
 ## Common commands
@@ -249,6 +257,7 @@ Flutter and React Native require an explicit target platform before platform-spe
 | `uidw --repo <repo> scope ...` | Prepare bounded screen/finding context for an agent |
 | `uidw --repo <repo> patch ...` | Validate or apply sparse review-only IR operations |
 | `uidw --repo <repo> workbench ...` | Build and validate the HTML projection |
+| `uidw --repo <repo> native status` | Discover native Android/Apple render providers without executing them |
 | `uidw --repo <repo> check --ir <file> --level full` | Repeat projection checks without UI/UX audit |
 | `uidw --repo <repo> review ...` | Explicitly start UI/UX review |
 | `uidw --repo <repo> scenarios validate --ir <file>` | Validate screen scenarios and populated collections |
@@ -307,4 +316,4 @@ fixtures/golden/            Adapter and workbench-shell regression fixtures
 
 ## Version
 
-Current CLI version: `0.3.5`.
+Current CLI version: `0.4.0`.

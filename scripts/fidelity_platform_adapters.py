@@ -93,7 +93,11 @@ class AndroidXmlAdapter:
     id = "android-xml"
     platforms = ("android", "android-tv")
     extensions = (".xml",)
-    maturity = "golden"
+    maturity = "structural"
+    structural_tier = "translated"
+    visual_tier = "none"
+    native_evidence_required = True
+    native_providers = ("paparazzi", "roborazzi", "android-emulator")
     limitations = ("custom views are not expanded", "constraint equations are preserved only as unsupported source")
     TYPES = {
         "LinearLayout": "container", "ConstraintLayout": "container", "FrameLayout": "container", "CoordinatorLayout": "container",
@@ -181,7 +185,10 @@ class XamlAdapter:
     id = "xaml"
     platforms = ("windows",)
     extensions = (".xaml",)
-    maturity = "golden"
+    maturity = "structural"
+    structural_tier = "translated"
+    visual_tier = "none"
+    native_evidence_required = True
     limitations = ("templates and bindings are not evaluated", "custom controls remain unsupported")
     TYPES = {"Page": "container", "Window": "container", "UserControl": "container", "Grid": "container", "StackPanel": "container", "Canvas": "container", "Border": "card", "NavigationView": "container", "Frame": "container", "ScrollViewer": "container", "ListView": "list", "GridView": "list", "ItemsControl": "list", "TextBlock": "text", "Label": "text", "Button": "button", "HyperlinkButton": "button", "TextBox": "input", "PasswordBox": "input", "Image": "image", "SymbolIcon": "icon", "FontIcon": "icon", "Rectangle": "divider"}
 
@@ -315,7 +322,11 @@ class SwiftUIAdapter:
     id = "swiftui"
     platforms = ("ios", "macos")
     extensions = (".swift",)
-    maturity = "golden"
+    maturity = "structural"
+    structural_tier = "translated"
+    visual_tier = "none"
+    native_evidence_required = True
+    native_providers = ("xcode-preview", "swift-snapshot-testing", "apple-simulator")
     limitations = ("supported SwiftUI primitives and modifiers only", "conditional runtime branches are not executed")
 
     def supports(self, context: SourceContext) -> bool:
@@ -347,7 +358,10 @@ class FlutterAdapter:
     id = "flutter"
     platforms = ("flutter",)
     extensions = (".dart",)
-    maturity = "golden"
+    maturity = "structural"
+    structural_tier = "translated"
+    visual_tier = "none"
+    native_evidence_required = True
     limitations = ("target OS family must be supplied separately", "custom widgets remain unsupported")
 
     def supports(self, context: SourceContext) -> bool:
@@ -378,7 +392,11 @@ class AppleInterfaceXmlAdapter:
     id = "apple-interface-xml"
     platforms = ("ios", "macos")
     extensions = (".storyboard", ".xib")
-    maturity = "golden"
+    maturity = "structural"
+    structural_tier = "translated"
+    visual_tier = "none"
+    native_evidence_required = True
+    native_providers = ("swift-snapshot-testing", "apple-simulator")
     limitations = ("Auto Layout constraints are not solved", "runtime UIKit/AppKit mutations are unsupported")
     TYPES = {"view": "container", "stackView": "container", "scrollView": "container", "tableView": "list", "collectionView": "list", "label": "text", "button": "button", "textField": "input", "textView": "input", "imageView": "image", "separator": "divider"}
 
@@ -433,7 +451,12 @@ class ProjectedMarkupAdapter:
         self.web_adapter, self.id = web_adapter, kind
         self.platforms = ("react-native",) if kind == "react-native" else ("web",)
         self.extensions = (".jsx", ".tsx", ".js", ".ts") if kind.startswith("react") else (f".{kind}",)
-        self.maturity = "golden"
+        native_projection = kind == "react-native"
+        self.maturity = "structural" if native_projection else "golden"
+        self.structural_tier = "translated"
+        self.visual_tier = "none" if native_projection else "projection"
+        self.native_evidence_required = native_projection
+        self.native_providers = ("android-emulator", "apple-simulator") if native_projection else ()
         self.limitations = ("dynamic expressions are not executed", "project components remain unsupported until mapped")
 
     def supports(self, context: SourceContext) -> bool:

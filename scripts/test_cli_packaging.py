@@ -187,7 +187,7 @@ class CliPackagingTests(unittest.TestCase):
         self.assertEqual(config["project"]["scripts"]["uidw"], "uidw:main")
         self.assertEqual(config["project"]["scripts"]["uidw-mcp"], "uidw_mcp:main")
         self.assertIn("mcp", config["project"]["optional-dependencies"])
-        for name in ("ui-graph.schema.json", "ui-agent-job.schema.json", "ui-ir.schema.json", "ui-ir.patch.schema.json", "uidw-config.schema.json"):
+        for name in ("ui-graph.schema.json", "ui-agent-job.schema.json", "ui-ir.schema.json", "ui-ir.patch.schema.json", "uidw-config.schema.json", "native-render-state.schema.json"):
             schema = json.loads((ROOT / "schemas" / name).read_text(encoding="utf-8"))
             self.assertIn("$schema", schema)
 
@@ -199,6 +199,7 @@ class CliPackagingTests(unittest.TestCase):
         self.assertIn("ui-ir.patch.json", skill)
         self.assertIn("metadata:", skill)
         self.assertIn("compatibility:", skill)
+        self.assertIn("ui_native_status", skill)
 
     def test_installers_cover_supported_agents(self) -> None:
         combined = (ROOT / "install.ps1").read_text(encoding="utf-8") + (ROOT / "install.sh").read_text(encoding="utf-8")
