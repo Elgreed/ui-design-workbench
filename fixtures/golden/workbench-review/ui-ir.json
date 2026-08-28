@@ -1,0 +1,177 @@
+{
+  "version": 1,
+  "project": {"name": "workbench-review-golden", "root": "C:/uidw-fixture"},
+  "platforms": ["web"],
+  "design": {"mode": "redesign", "targetPlatforms": ["web"]},
+  "viewport": {"width": 640, "height": 400, "device": "desktop"},
+  "screenTree": [
+    {
+      "id": "main",
+      "label": "Основные экраны",
+      "children": [
+        {"screenId": "overview", "label": "Обзор"},
+        {"screenId": "narrow", "label": "Узкое состояние"}
+      ]
+    }
+  ],
+  "screens": [
+    {
+      "id": "overview",
+      "name": "Обзор",
+      "route": "/review",
+      "navigationFlowId": "review",
+      "navigationEntry": true,
+      "root": "overview-root",
+      "scenarios": [
+        {"id": "populated", "label": "С данными", "nodeOverrides": {"overview-meta": {"text": "8 элементов"}}}
+      ]
+    },
+    {
+      "id": "narrow",
+      "name": "Узкое состояние",
+      "route": "/review",
+      "navigationFlowId": "review",
+      "root": "narrow-root"
+    }
+  ],
+  "nodes": {
+    "overview-root": {
+      "type": "container",
+      "children": ["overview-nav", "overview-title", "overview-meta", "overview-card"],
+      "layout": {"direction": "column", "gap": 14, "padding": 24, "width": "fill", "height": "fill"},
+      "style": {"background": "#f6f8fb", "color": "#1f2937"},
+      "confidence": "high"
+    },
+    "overview-nav": {
+      "type": "button",
+      "text": "Открыть узкое состояние",
+      "action": {"type": "navigate", "target": "narrow"},
+      "semantics": {"role": "button", "label": "Открыть узкое состояние", "targetSize": {"width": 240, "height": 44}},
+      "layout": {"width": 240, "height": 44, "paddingHorizontal": 14},
+      "style": {"background": "#315fbd", "color": "#ffffff", "radius": 8},
+      "confidence": "high"
+    },
+    "overview-title": {
+      "type": "text",
+      "text": "Проверка интерфейса",
+      "style": {"fontSize": 24, "fontWeight": 700, "lineHeight": 32},
+      "confidence": "exact"
+    },
+    "overview-meta": {
+      "type": "text",
+      "text": "Нет данных",
+      "style": {"fontSize": 14, "color": "#667085"},
+      "confidence": "exact"
+    },
+    "overview-card": {
+      "type": "card",
+      "children": ["overview-card-title", "overview-card-body"],
+      "layout": {"direction": "column", "gap": 8, "padding": 18},
+      "style": {"background": "#ffffff", "border": "1px solid #dce3ed", "radius": 12},
+      "confidence": "high"
+    },
+    "overview-card-title": {
+      "type": "text",
+      "text": "Результат",
+      "style": {"fontSize": 16, "fontWeight": 700},
+      "confidence": "exact"
+    },
+    "overview-card-body": {
+      "type": "text",
+      "text": "Проблемы сгруппированы и готовы к просмотру.",
+      "style": {"fontSize": 14, "lineHeight": 20},
+      "confidence": "exact"
+    },
+    "narrow-root": {
+      "type": "container",
+      "children": ["narrow-nav", "narrow-title", "narrow-body"],
+      "layout": {"direction": "column", "gap": 14, "padding": 24, "width": "fill", "height": "fill"},
+      "style": {"background": "#ffffff", "color": "#1f2937"},
+      "confidence": "high"
+    },
+    "narrow-nav": {
+      "type": "button",
+      "text": "Вернуться к обзору",
+      "action": {"type": "navigate", "target": "overview"},
+      "semantics": {"role": "button", "label": "Вернуться к обзору", "targetSize": {"width": 210, "height": 44}},
+      "layout": {"width": 210, "height": 44, "paddingHorizontal": 14},
+      "style": {"background": "#315fbd", "color": "#ffffff", "radius": 8},
+      "confidence": "high"
+    },
+    "narrow-title": {
+      "type": "text",
+      "text": "Компактный режим",
+      "style": {"fontSize": 22, "fontWeight": 700, "lineHeight": 30},
+      "confidence": "exact"
+    },
+    "narrow-body": {
+      "type": "text",
+      "text": "Панели не должны перекрывать основное действие.",
+      "style": {"fontSize": 14, "lineHeight": 20},
+      "confidence": "exact"
+    }
+  },
+  "review": {
+    "sessionId": "workbench-review-golden",
+    "revision": "workbench-review-golden-v1",
+    "baselineVersion": "baseline",
+    "activeVersion": "proposal-clearer-copy",
+    "versions": [
+      {"id": "baseline", "label": "Before", "kind": "baseline", "status": "approved", "nodeOverrides": {}},
+      {
+        "id": "proposal-clearer-copy",
+        "label": "After · понятный результат",
+        "kind": "proposal",
+        "parent": "baseline",
+        "status": "proposal",
+        "findingIds": ["finding-copy"],
+        "resolvedFindingIds": ["finding-copy"],
+        "nodeOverrides": {"overview-card-body": {"text": "Найдено 2 проблемы. Выберите, какие исправить."}}
+      }
+    ],
+    "audit": {
+      "status": "partial",
+      "summary": "Golden fixture for the workbench review workflow.",
+      "scope": {"tasks": ["Проверить и выбрать проблемы"], "screens": ["overview", "narrow"]},
+      "uxAssessment": [
+        {"lens": "discoverability", "status": "finding", "observation": "Исходный текст не объясняет следующий шаг.", "findingIds": ["finding-copy"]}
+      ],
+      "findings": [
+        {
+          "id": "finding-copy",
+          "title": "Результат не объясняет следующий шаг",
+          "category": "content-clarity",
+          "severity": "medium",
+          "confidence": "high",
+          "screenId": "overview",
+          "nodeId": "overview-card-body",
+          "reviewVersionId": "baseline",
+          "observation": "Карточка сообщает о готовности, но не называет действие пользователя.",
+          "impact": "Пользователь вынужден искать продолжение процесса.",
+          "recommendation": "Показать количество проблем и предложить выбрать исправления.",
+          "evidence": [{"type": "user-feedback", "ref": "golden-fixture", "note": "Проверка понятности review workflow."}],
+          "effort": "small",
+          "proposalVersionId": "proposal-clearer-copy",
+          "status": "open"
+        }
+      ]
+    },
+    "diagnostics": {
+      "profiles": [
+        {"id": "wide", "label": "Wide", "viewport": {"width": 1440, "height": 960}, "zoomLevels": [0.2, 1, 2]},
+        {"id": "compact", "label": "Compact", "viewport": {"width": 760, "height": 900}, "zoomLevels": [0.2, 1, 2]}
+      ],
+      "scenarios": [
+        {"id": "screen-render", "label": "Screen render", "kind": "screen-render"},
+        {"id": "zoom-reset", "label": "Zoom reset", "kind": "zoom-reset"},
+        {"id": "overview-geometry", "label": "Overview geometry", "kind": "overview-geometry"},
+        {"id": "menu-exclusivity", "label": "Menu interaction", "kind": "menu-exclusivity"},
+        {"id": "layout-integrity", "label": "Layout integrity", "kind": "layout-integrity"},
+        {"id": "accessibility-basics", "label": "Accessibility basics", "kind": "accessibility-basics"},
+        {"id": "state-matrix", "label": "Component states", "kind": "state-matrix"},
+        {"id": "navigation-flow", "label": "Navigation flow", "kind": "navigation-flow", "entryScreenIds": ["overview"]},
+        {"id": "contrast-focus", "label": "Contrast and keyboard", "kind": "contrast-focus"}
+      ]
+    }
+  }
+}

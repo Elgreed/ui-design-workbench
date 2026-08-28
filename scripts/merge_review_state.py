@@ -97,8 +97,8 @@ def validate_feedback(ir: dict[str, Any], feedback: dict[str, Any]) -> list[str]
     nodes = ir.get("nodes", {})
     screen_ids = {item.get("id") for item in ir.get("screens", [])}
     version_ids = {item.get("id") for item in review.get("versions", [])}
-    if feedback.get("version") not in {1, 2}:
-        errors.append("Feedback version must be 1 or 2")
+    if feedback.get("version") not in {1, 2, 3}:
+        errors.append("Feedback version must be 1, 2, or 3")
     if review.get("sessionId") and feedback.get("sessionId") != review.get("sessionId"):
         errors.append("Feedback sessionId does not match this IR review session")
     if feedback.get("activeVersion") not in version_ids:
@@ -131,8 +131,8 @@ def validate_feedback(ir: dict[str, Any], feedback: dict[str, Any]) -> list[str]
         if not isinstance(diagnostics, dict):
             errors.append("Feedback diagnostics must be an object or null")
         else:
-            if diagnostics.get("version") != 1:
-                errors.append("Feedback diagnostics version must be 1")
+            if diagnostics.get("version") not in {1, 2}:
+                errors.append("Feedback diagnostics version must be 1 or 2")
             if diagnostics.get("status") != "complete":
                 errors.append("Feedback diagnostics status must be complete")
             if not isinstance(diagnostics.get("summary"), dict):
@@ -223,9 +223,9 @@ def merge(ir: dict[str, Any], feedback: dict[str, Any]) -> dict[str, Any]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Merge exported ui-review-feedback.json or ui-fix-request.json into ui-ir.json.")
+    parser = argparse.ArgumentParser(description="Merge exported ui-review-state.json or ui-fix-request.json into ui-ir.json.")
     parser.add_argument("ir", type=Path, help="Existing ui-ir.json")
-    parser.add_argument("feedback", type=Path, help="Exported ui-review-feedback.json")
+    parser.add_argument("feedback", type=Path, help="Exported ui-review-state.json (legacy ui-review-feedback.json is accepted)")
     parser.add_argument("--output", type=Path, required=True, help="Output IR; use a new file for auditability")
     return parser.parse_args()
 

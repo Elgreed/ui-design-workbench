@@ -37,6 +37,8 @@ Use it when you need to understand an unfamiliar UI codebase, inspect all screen
 - Rendering, review, and proposals keep application source read-only.
 - Source changes require a separate authorized apply job.
 - Generated HTML is standalone and requires no local server.
+- Review state is tied to the target revision and can be explicitly saved/restored from File; opening or checking a preview never downloads it automatically.
+- Runtime findings are versioned by diagnostics engine and replaced on rerun, so fixed checks cannot remain as stale problems.
 
 ## Main features
 
@@ -173,6 +175,8 @@ The review flow is:
 
 Review findings are always bound to the immutable reviewed version. Proposal versions may describe which findings they address, but a finding is complete only after the project change passes targeted verification.
 
+Use `Save review` and `Restore review` in File for a portable backup. Browser storage still restores unchanged reviews automatically, while incompatible technical diagnostics are recomputed without discarding human decisions or comments.
+
 The CLI prepares portable agent jobs; it does not silently launch an AI provider or edit project source.
 
 Useful review commands:
@@ -280,11 +284,12 @@ scripts/uidw.py             Main CLI
 scripts/scan_ui.py          Incremental source scanner
 scripts/render_preview.py   Standalone HTML renderer
 scripts/smoke_preview.js    Headless workbench checks
+scripts/verify_workbench_goldens.py  Review-panel visual regression gate
 schemas/                    JSON schemas
 references/                 Behavior and platform contracts
-fixtures/golden/            Adapter regression fixtures
+fixtures/golden/            Adapter and workbench-shell regression fixtures
 ```
 
 ## Version
 
-Current CLI version: `0.3.2`.
+Current CLI version: `0.3.3`.

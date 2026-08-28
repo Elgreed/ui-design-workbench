@@ -67,6 +67,8 @@ Official pattern references:
 - Narrow layout: rail remains; panel labels and nonessential document-bar items collapse before controls disappear.
 - Panel width, active tab, selected node, review filter, scroll, and collapse state persist by review revision.
 - Persist review results independently from the generated shell version. Rebuilding `ui-preview.html` with unchanged target screens/nodes/versions must restore diagnostics, run history, selections, decisions, annotations, and view context automatically. Never let unload or incidental UI interaction overwrite a quarantined stale snapshot before the reviewer chooses migrate or discard.
+- Version runtime diagnostics independently. An engine upgrade or a new run removes obsolete runtime findings but preserves expert findings, decisions, annotations, run history, and view context.
+- Put `Сохранить ревью` and `Восстановить ревью` in File. Both are explicit actions; opening or checking a preview must never download a file.
 - A panel opened from a finding, comment, inspection tool, diagnostic, or application menu must select the relevant tab automatically.
 
 ## Interaction contract
@@ -77,7 +79,7 @@ Official pattern references:
 - Single screen and Prototype show one stable compact control bar only when alternatives exist. Use fixed-width native selectors for Theme and State rather than one button per value; changing long labels must not resize the bar, move the canvas, or lose keyboard focus. One grid action opens `Variants`, which provides `By theme`, `By state`, and, only when both dimensions vary, `Matrix`. The matrix is split into visually separate theme sections; it must not flatten every combination into one unlabelled grid. Every device retains its theme, scenario patch, stable geometry, and label.
 - Selecting a node synchronizes canvas highlight, layer/screen context, and the Properties or Comments panel without losing canvas scroll.
 - Menus and popovers are mutually exclusive and close on action, outside click, `Escape`, or view change.
-- Diagnostics must be observational: menu, keyboard, and interaction checks may use inert diagnostic controls but must never activate export, source-change, clipboard, navigation, or other consequential user commands. `ui-review-feedback.json` is downloaded only after an explicit user click on `Экспорт ревью`.
+- Diagnostics must be observational: menu, keyboard, and interaction checks may use inert diagnostic controls but must never activate export, source-change, clipboard, navigation, or other consequential user commands. `ui-review-state.json` is downloaded only after an explicit user click on `Сохранить ревью`.
 - The current screen and hovered navigation destination use distinct colors.
 - Design approval and source implementation are separate phases with separate actions. The primary safe flow is preview → approve → `Apply to project`; the Problems workspace also exposes one unmistakable `Fix everything in project` fast path. Never label a generated After mockup as a completed project fix.
 - Ordinary views render exactly one version chosen in the document bar. Version selection never changes the view mode.

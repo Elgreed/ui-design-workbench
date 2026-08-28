@@ -21,6 +21,15 @@
           "id": { "type": "string", "minLength": 1 },
           "name": { "type": "string", "minLength": 1 },
           "root": { "type": "string", "minLength": 1 },
+          "route": { "type": "string" },
+          "fragment": { "type": "string" },
+          "logicalView": { "type": "boolean" },
+          "navigationFlowId": { "type": "string", "minLength": 1 },
+          "navigationEntry": { "type": "boolean" },
+          "platform": { "type": "string", "minLength": 1 },
+          "source": { "$ref": "#/$defs/sourceRef" },
+          "confidence": { "enum": ["exact", "high", "approximate", "unsupported"] },
+          "viewport": { "$ref": "#/$defs/viewport" },
           "defaultScenarioId": { "type": "string" },
           "scenarios": {
             "type": "array",
@@ -44,6 +53,8 @@
           "type": { "enum": ["container", "card", "text", "button", "input", "image", "icon", "spacer", "divider", "list", "custom"] },
           "confidence": { "enum": ["exact", "high", "approximate", "unsupported"] },
           "source": { "$ref": "#/$defs/sourceRef" },
+          "action": { "$ref": "#/$defs/action" },
+          "semantics": { "$ref": "#/$defs/semantics" },
           "provenance": {
             "type": "object",
             "additionalProperties": { "$ref": "#/$defs/propertyEvidence" }
@@ -90,7 +101,16 @@
       },
       "additionalProperties": true
     },
-    "review": { "type": "object" }
+    "review": {
+      "type": "object",
+      "properties": {
+        "revision": { "type": "string", "minLength": 1 },
+        "baselineVersion": { "type": "string", "minLength": 1 },
+        "activeVersion": { "type": "string", "minLength": 1 },
+        "diagnostics": { "$ref": "#/$defs/diagnostics" }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true,
   "$defs": {
@@ -100,6 +120,114 @@
         "file": { "type": "string" },
         "line": { "type": "integer", "minimum": 1 },
         "symbol": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "viewport": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 },
+        "device": { "type": "string" },
+        "frame": { "type": "boolean" },
+        "background": {}
+      },
+      "additionalProperties": true
+    },
+    "action": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": ["navigate", "back", "set-node-state", "toggle-node-state", "toggle", "reset-state"]
+        },
+        "target": { "type": "string", "minLength": 1 },
+        "state": { "type": "string", "minLength": 1 },
+        "offState": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "navigate" } }, "required": ["type"] },
+          "then": { "required": ["target"] }
+        },
+        {
+          "if": {
+            "properties": { "type": { "enum": ["set-node-state", "toggle-node-state", "toggle"] } },
+            "required": ["type"]
+          },
+          "then": { "required": ["target", "state"] }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "semantics": {
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "targetSize": {
+          "oneOf": [
+            { "type": "number", "exclusiveMinimum": 0 },
+            {
+              "type": "object",
+              "required": ["width", "height"],
+              "properties": {
+                "width": { "type": "number", "exclusiveMinimum": 0 },
+                "height": { "type": "number", "exclusiveMinimum": 0 }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "targetSizeException": {
+          "type": "object",
+          "required": ["reason"],
+          "properties": { "reason": { "type": "string", "minLength": 1 } },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "diagnostics": {
+      "type": "object",
+      "properties": {
+        "profiles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "label", "viewport"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "label": { "type": "string", "minLength": 1 },
+              "viewport": { "oneOf": [{ "const": "current" }, { "$ref": "#/$defs/viewport" }] },
+              "zoomLevels": {
+                "type": "array",
+                "items": { "type": "number", "minimum": 0.2, "maximum": 2 }
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "scenarios": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "label", "kind"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "label": { "type": "string", "minLength": 1 },
+              "kind": {
+                "enum": ["screen-render", "zoom-reset", "overview-geometry", "menu-exclusivity", "layout-integrity", "accessibility-basics", "state-matrix", "navigation-flow", "contrast-focus"]
+              },
+              "entryScreenIds": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "type": "string", "minLength": 1 }
+              }
+            },
+            "additionalProperties": true
+          }
+        }
       },
       "additionalProperties": true
     },

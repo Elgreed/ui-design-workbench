@@ -54,6 +54,14 @@ Pixel thresholds tolerate small antialiasing differences; geometry defaults to a
 
 Pixel comparison uses Pillow (`PIL`). If the default Python runtime lacks it, use the bundled workspace Python runtime that provides Pillow; do not silently skip the regression gate.
 
+The workbench review shell has four committed golden states (Summary at wide and compact widths, Problems, and Changes). Verify them after changing the renderer, review navigation, or panel CSS:
+
+```powershell
+python <skill-dir>/scripts/verify_workbench_goldens.py
+```
+
+Use `--approve` only after visually inspecting every new PNG. This is an explicit maintainer action; normal verification never replaces a baseline.
+
 ## Delivery gate
 
 A production review bundle contains:

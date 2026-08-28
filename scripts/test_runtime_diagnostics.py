@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from render_preview import render_html
+from render_preview import render_html, validate
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -158,7 +158,8 @@ class RuntimeDiagnosticsTests(unittest.TestCase):
         html = render_html(regression_ir())
         self.assertNotIn('data-action="${esc(action.type||\'\')}"', html)
         self.assertIn("actionAttrs=actionType?", html)
-        self.assertIn("semanticRole", html)
+        self.assertIn('data-interactive="${interaction.interactive}"', html)
+        self.assertIn("nodeInteraction(node)", html)
 
     def test_renderer_exposes_source_evidenced_theme_and_variant_axes(self) -> None:
         ir = regression_ir()
@@ -242,6 +243,50 @@ class RuntimeDiagnosticsTests(unittest.TestCase):
         cabinet_flow = next(item for item in check["metrics"]["flows"] if item["flowId"] == "/cabinet")
         self.assertTrue(cabinet_flow["reachabilityAssessed"])
         self.assertEqual(cabinet_flow["entryScreenIds"], ["cabinet-home"])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for the headless runtime regression")
+    def test_navigation_keeps_explicit_flows_independent_even_on_one_route(self) -> None:
+        ir = regression_ir()
+        for screen in ir["screens"]:
+            screen["route"] = "/shared"
+            screen["navigationFlowId"] = "cabinet" if screen["id"].startswith("cabinet-") else "admin"
+        ir["screens"][0]["navigationEntry"] = True
+        ir["screens"][2]["navigationEntry"] = True
+        ir["nodes"]["admin-home-nav"]["action"]["target"] = "admin-home"
+        ir["nodes"]["admin-home-custom-action"]["action"]["target"] = "admin-home"
+
+        report = self._run_runtime(ir)
+        check = next(item for item in report["checks"] if item["scenarioId"] == "navigation-flow")
+        self.assertEqual(check["result"], "warning")
+        self.assertEqual(check["metrics"]["unreachable"], ["admin-jobs"])
+        self.assertEqual({flow["flowId"] for flow in check["metrics"]["flows"]}, {"cabinet", "admin"})
+        cabinet = next(flow for flow in check["metrics"]["flows"] if flow["flowId"] == "cabinet")
+        self.assertEqual(cabinet["unreachable"], [])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for the headless runtime regression")
+    def test_multiple_entries_make_independent_subflows_reachable(self) -> None:
+        ir = regression_ir()
+        navigation = next(item for item in ir["review"]["diagnostics"]["scenarios"] if item["id"] == "navigation-flow")
+        navigation["entryScreenIds"] = ["cabinet-home", "cabinet-settings", "admin-home", "admin-jobs"]
+        for node_id in ("cabinet-home-nav", "cabinet-settings-nav", "admin-home-nav", "admin-jobs-nav"):
+            ir["nodes"][node_id]["action"]["target"] = node_id.removesuffix("-nav")
+
+        report = self._run_runtime(ir)
+        check = next(item for item in report["checks"] if item["scenarioId"] == "navigation-flow")
+        self.assertEqual(check["result"], "pass")
+        self.assertEqual(check["metrics"]["unreachable"], [])
+        self.assertEqual(check["metrics"]["assessedFlows"], 2)
+
+    def test_navigation_and_state_contracts_are_validated_before_render(self) -> None:
+        ir = regression_ir()
+        navigation = next(item for item in ir["review"]["diagnostics"]["scenarios"] if item["id"] == "navigation-flow")
+        navigation["entryScreenIds"] = ["missing-screen", "missing-screen"]
+        ir["screens"][0]["navigationFlowId"] = "   "
+        ir["nodes"]["cabinet-home-title"]["action"] = {"type": "toggle", "target": "cabinet-home-status"}
+        errors = validate(ir)
+        self.assertTrue(any("entryScreenIds must be a unique array" in error for error in errors))
+        self.assertTrue(any("navigationFlowId must be a non-empty string" in error for error in errors))
+        self.assertTrue(any("requires state" in error for error in errors))
 
 
 if __name__ == "__main__":

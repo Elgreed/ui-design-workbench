@@ -1,0 +1,99 @@
+{
+  "version": 2,
+  "viewport": {
+    "width": 1440,
+    "height": 960
+  },
+  "view": "single",
+  "screen": "overview",
+  "zoom": 1,
+  "sidebarOpen": false,
+  "inspectorOpen": true,
+  "inspectorTab": "review",
+  "elements": {
+    "rail": {
+      "x": 0,
+      "y": 0,
+      "width": 44,
+      "height": 960,
+      "visible": true,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "leftPanel": {
+      "x": 44,
+      "y": 0,
+      "width": 0,
+      "height": 960,
+      "visible": false,
+      "overflowX": "hidden",
+      "overflowY": "hidden"
+    },
+    "documentBar": {
+      "x": 44,
+      "y": 0,
+      "width": 1068,
+      "height": 44,
+      "visible": true,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "stage": {
+      "x": 44,
+      "y": 44,
+      "width": 1068,
+      "height": 916,
+      "visible": true,
+      "overflowX": "auto",
+      "overflowY": "auto"
+    },
+    "canvasTools": {
+      "x": 369.77,
+      "y": 906,
+      "width": 416.47,
+      "height": 40,
+      "visible": true,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "zoomControls": {
+      "x": 961,
+      "y": 910,
+      "width": 137,
+      "height": 36,
+      "visible": true,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    },
+    "rightPanel": {
+      "x": 1116,
+      "y": 0,
+      "width": 324,
+      "height": 960,
+      "visible": true,
+      "overflowX": "hidden",
+      "overflowY": "hidden"
+    },
+    "activeInspectorPane": {
+      "x": 1117,
+      "y": 44,
+      "width": 323,
+      "height": 916,
+      "visible": true,
+      "overflowX": "auto",
+      "overflowY": "auto"
+    },
+    "reviewFooter": {
+      "x": 1117,
+      "y": 405,
+      "width": 323,
+      "height": 76.5,
+      "visible": true,
+      "overflowX": "visible",
+      "overflowY": "visible"
+    }
+  },
+  "overlaps": [],
+  "cardOverlaps": [],
+  "controlOverlaps": []
+}
