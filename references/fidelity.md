@@ -8,6 +8,8 @@ Each translated property carries stable property-level provenance. Token aliases
 
 Use `uidw fidelity capabilities` for the installed support matrix, `uidw fidelity report` for the compact gate, and `uidw fidelity explain` for one node or evidence ID. Capabilities distinguish `structuralTier`, `visualTier`, and `nativeEvidenceRequired`; Android and Apple source adapters must never claim native visual fidelity. Per-adapter fixtures prevent silent translation drift.
 
+The HTML projection resolves recognized controls through the official-doc-first [platform component catalog](component-catalog.md). Catalog geometry is a render-only fallback: explicit source layout, theme, token, and style evidence always wins, and the source IR is not mutated.
+
 Use this contract before creating reviewable IR. The goal is not a visually pleasant approximation; it is a traceable projection of the authored UI.
 
 ## Evidence bundle per screen

@@ -108,7 +108,9 @@ A Windows `.exe` is not published yet. PyPI + `pipx` is the primary cross-platfo
 - [Agent integrations](references/agent-integrations.md)
 - [Fidelity contract](references/fidelity.md)
 - [Native rendering](references/native-rendering.md)
+- [Cache protocol](references/cache-protocol.md)
+- [Platform component catalog](references/component-catalog.md)
 - [IR schema](references/ir-schema.md)
 - [Review workflow](references/review-workflow.md)
 
-Current CLI version: `0.5.0`.
+Current CLI version: `0.6.1`.

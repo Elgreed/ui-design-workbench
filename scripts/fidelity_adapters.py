@@ -10,6 +10,7 @@ from typing import Any
 from android_resource_resolver import AndroidResourceCatalog, material_icon_asset
 from fidelity_adapter_api import AdapterResult, SourceContext, UiSourceAdapter, adapter_capabilities, register_adapter, registered_adapters, translate_sources
 from fidelity_core import property_evidence, stable_id
+from platform_component_catalog import adapter_type_map
 
 
 def _slug(value: str, fallback: str = "node") -> str:
@@ -155,7 +156,7 @@ class WebAdapter:
             while node_id in used:
                 node_id += "-2"
             used.add(node_id)
-            node_type = "container"
+            node_type = adapter_type_map("web", "web").get(tag, "container")
             if tag in {"ul", "ol"}: node_type = "list"
             elif tag == "li": node_type = "card"
             elif tag in {"h1", "h2", "h3", "h4", "h5", "h6", "p", "span", "label", "small", "strong"}: node_type = "text"
@@ -163,7 +164,7 @@ class WebAdapter:
             elif tag in {"input", "textarea", "select"}: node_type = "input"
             elif tag == "img": node_type = "image"
             elif tag == "hr": node_type = "divider"
-            node: dict[str, Any] = {"type": node_type, "layout": {}, "style": {}, "children": [], "source": {"file": context.source, "line": item["line"]}, "confidence": "high", "standardRef": f"html.{tag}", "provenance": {}}
+            node: dict[str, Any] = {"type": node_type, "component": tag, "layout": {}, "style": {}, "children": [], "source": {"file": context.source, "line": item["line"]}, "confidence": "high", "standardRef": f"html.{tag}", "inheritsAppearance": True, "provenance": {"component": property_evidence(context.source, item["line"], tag, self.id, "exact")}}
             if item["text"]:
                 node["text"] = item["text"]
                 node["provenance"]["text"] = property_evidence(context.source, item["line"], item["text"], self.id, "exact")
@@ -207,7 +208,19 @@ class WebAdapter:
         return result
 
 
-COMPOSE_TYPES = {"Column": "container", "Row": "container", "Box": "container", "LazyColumn": "list", "LazyRow": "list", "Scaffold": "container", "Card": "card", "Surface": "card", "Text": "text", "Button": "button", "TextField": "input", "OutlinedTextField": "input", "Image": "image", "Icon": "icon", "Spacer": "spacer"}
+COMPOSE_TYPES = {
+    "Column": "container", "Row": "container", "Box": "container", "LazyColumn": "list", "LazyRow": "list",
+    "Scaffold": "container", "Card": "card", "ElevatedCard": "card", "OutlinedCard": "card", "Surface": "card",
+    "Text": "text", "Button": "button", "FilledTonalButton": "button", "OutlinedButton": "button", "TextButton": "button",
+    "IconButton": "button", "FloatingActionButton": "button", "ExtendedFloatingActionButton": "button",
+    "TextField": "input", "OutlinedTextField": "input", "SearchBar": "input", "Image": "image", "Icon": "icon",
+    "Checkbox": "container", "Switch": "container", "RadioButton": "container", "ListItem": "card",
+    "NavigationBar": "container", "NavigationRail": "container", "TopAppBar": "container", "CenterAlignedTopAppBar": "container",
+    "LinearProgressIndicator": "container", "CircularProgressIndicator": "container", "Spacer": "spacer",
+}
+
+COMPOSE_PROJECT_LAYOUTS = {"Column", "Row", "Box", "LazyColumn", "LazyRow", "Spacer"}
+COMPOSE_TYPES.update(adapter_type_map("android", "compose"))
 
 
 def _balanced_close(text: str, start: int, opening: str, closing: str) -> int | None:
@@ -235,7 +248,7 @@ def _balanced_close(text: str, start: int, opening: str, closing: str) -> int | 
 
 def _compose_calls(body: str) -> list[dict[str, Any]]:
     calls: list[dict[str, Any]] = []
-    pattern = re.compile(r"\b(" + "|".join(COMPOSE_TYPES) + r")\s*\(")
+    pattern = re.compile(r"\b(" + "|".join(re.escape(name) for name in sorted(COMPOSE_TYPES, key=len, reverse=True)) + r")\s*\(")
     for match in pattern.finditer(body):
         open_paren = body.find("(", match.start())
         close_paren = _balanced_close(body, open_paren, "(", ")")
@@ -362,10 +375,17 @@ class ComposeAdapter:
                 node_id = f"{screen_id}-{_slug(widget)}-{count}"
                 line = context.text.count("\n", 0, start + call["start"]) + 1
                 native_prefix = "material3"
-                standard = f"{native_prefix}.{widget.lower()}" if widget in {"Scaffold", "Card", "Surface", "Text", "Button", "TextField", "OutlinedTextField", "Icon"} else f"project.{platform}.compose.{widget.lower()}"
+                standard = f"project.{platform}.compose.{widget.lower()}" if widget in COMPOSE_PROJECT_LAYOUTS else f"{native_prefix}.{widget.lower()}"
                 node: dict[str, Any] = {"type": COMPOSE_TYPES[widget], "component": widget, "layout": {}, "style": {}, "children": [], "source": {"file": context.source, "line": line, "symbol": name}, "confidence": "high", "standardRef": standard, "provenance": {"component": property_evidence(context.source, line, widget, self.id, "exact")}}
                 if standard.startswith("material3."):
                     node["inheritsAppearance"] = True
+                conditional_roles = {"Checkbox": "checkbox", "Switch": "switch", "RadioButton": "radio"}
+                if widget in conditional_roles:
+                    callback_name = "onCheckedChange" if widget in {"Checkbox", "Switch"} else "onClick"
+                    callback = _compose_named_value(args, callback_name)
+                    if callback and callback != "null":
+                        node["semantics"] = {"role": conditional_roles[widget]}
+                        node["provenance"]["semantics.role"] = property_evidence(context.source, line, f"{callback_name} = {callback}", self.id, "high")
                 literal = re.search(r"(?:text\s*=\s*)?\"([^\"]*)\"", args)
                 if literal and node["type"] in {"text", "button", "input"}:
                     node["text"] = literal.group(1)

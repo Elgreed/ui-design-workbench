@@ -31,6 +31,7 @@ from typing import Any
 from quality_common import node_screen_map
 from fidelity_core import fidelity_report, seal_baseline
 from fidelity_adapters import adapter_capabilities
+from platform_component_catalog import catalog_summary, validate_component_catalog
 from scoped_context import (
     apply_patch_file,
     build_scoped_context,
@@ -52,7 +53,7 @@ from scan_ui import (
 
 
 CACHE_VERSION = 8
-CLI_VERSION = "0.5.0"
+CLI_VERSION = "0.6.1"
 CONFIG_VERSION = 5
 STATE_DIR_NAME = ".ui-design-workbench"
 CONFIG_NAME = "config.json"
@@ -592,7 +593,15 @@ def mock_data_context(config: dict[str, Any]) -> dict[str, Any]:
 def fidelity_command(ir: dict[str, Any], action: str, identifier: str | None = None, output: Path | None = None, output_format: str = "json") -> dict[str, Any]:
     if action == "capabilities":
         adapters = adapter_capabilities()
-        return {"version": 1, "status": "pass", "adapterCount": len(adapters), "adapters": adapters}
+        catalog_errors = validate_component_catalog()
+        return {
+            "version": 1,
+            "status": "pass" if not catalog_errors else "fail",
+            "adapterCount": len(adapters),
+            "adapters": adapters,
+            "componentCatalog": catalog_summary(),
+            "componentCatalogErrors": catalog_errors,
+        }
     if action == "report":
         report = fidelity_report(ir)
         if output:

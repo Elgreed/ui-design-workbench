@@ -108,7 +108,9 @@ Windows `.exe` пока не публикуется. Основной кросс
 - [Интеграции с агентами](references/agent-integrations.md)
 - [Контракт точности](references/fidelity.md)
 - [Нативный рендеринг](references/native-rendering.md)
+- [Протокол кеша](references/cache-protocol.md)
+- [Каталог платформенных компонентов](references/component-catalog.md)
 - [Схема IR](references/ir-schema.md)
 - [Процесс ревью](references/review-workflow.md)
 
-Текущая версия CLI: `0.5.0`.
+Текущая версия CLI: `0.6.1`.

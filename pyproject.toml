@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ui-design-workbench-cli"
-version = "0.5.0"
+version = "0.6.1"
 description = "Repository UI indexing, graph, preview, and deterministic review CLI"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -45,6 +45,7 @@ py-modules = [
   "fidelity_platform_adapters",
   "android_resource_resolver",
   "apple_resource_resolver",
+  "platform_component_catalog",
   "native_render_contracts",
   "native_render_android",
   "native_render_apple",
@@ -57,7 +58,7 @@ py-modules = [
 
 [tool.setuptools.data-files]
 "share/ui-design-workbench" = ["SKILL.md"]
-"share/ui-design-workbench/references" = ["references/*.md", "references/platform-profiles.json"]
+"share/ui-design-workbench/references" = ["references/*.md", "references/platform-profiles.json", "references/component-catalog.json", "references/component-inventory.json"]
 "share/ui-design-workbench/schemas" = ["schemas/*.json"]
 "share/ui-design-workbench/scripts" = [
   "scripts/android_resource_resolver.py",
@@ -75,6 +76,7 @@ py-modules = [
   "scripts/native_render_apple.py",
   "scripts/native_render_contracts.py",
   "scripts/native_render_registry.py",
+  "scripts/platform_component_catalog.py",
   "scripts/quality_common.py",
   "scripts/render_preview.py",
   "scripts/scan_ui.py",

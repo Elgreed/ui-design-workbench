@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "authorityOrder": ["official-platform-documentation", "built-in-renderer-calibration", "project-authored-overrides"],
+  "note": "Component identity and semantics follow official platform documentation. HTML geometry is a calibrated fallback only; explicit project values always win.",
+  "families": {
+    "android": {
+      "sources": [
+        {"title": "Material 3 components", "url": "https://m3.material.io/components", "authority": "official"},
+        {"title": "Compose accessibility defaults", "url": "https://developer.android.com/develop/ui/compose/accessibility/api-defaults", "authority": "official"}
+      ],
+      "components": {
+        "button": {"aliases": ["Button", "MaterialButton", "FilledButton", "FilledTonalButton"], "types": ["button"], "rendererKind": "button", "layout": {"minHeight": 48, "paddingHorizontal": 24}, "style": {"backgroundColor": "#6750a4", "color": "#ffffff", "radius": 20, "fontFamily": "Roboto, Arial, sans-serif", "fontSize": 14, "fontWeight": 500, "textAlign": "center"}, "semantics": {"role": "button"}},
+        "outlined-button": {"aliases": ["OutlinedButton"], "rendererKind": "button", "layout": {"minHeight": 48, "paddingHorizontal": 24}, "style": {"backgroundColor": "transparent", "color": "#6750a4", "borderColor": "#79747e", "borderWidth": 1, "borderStyle": "solid", "radius": 20, "fontSize": 14, "fontWeight": 500, "textAlign": "center"}, "semantics": {"role": "button"}},
+        "text-button": {"aliases": ["TextButton"], "rendererKind": "button", "layout": {"minHeight": 48, "paddingHorizontal": 12}, "style": {"backgroundColor": "transparent", "color": "#6750a4", "radius": 20, "fontSize": 14, "fontWeight": 500, "textAlign": "center"}, "semantics": {"role": "button"}},
+        "icon-button": {"aliases": ["IconButton", "ImageButton", "FloatingActionButton", "ExtendedFloatingActionButton"], "rendererKind": "icon-button", "layout": {"width": 48, "height": 48}, "style": {"backgroundColor": "transparent", "color": "#49454f", "radius": 24}, "semantics": {"role": "button"}},
+        "text-field": {"aliases": ["TextField", "OutlinedTextField", "EditText", "TextInputEditText"], "types": ["input"], "rendererKind": "input", "layout": {"minHeight": 56, "paddingHorizontal": 16}, "style": {"backgroundColor": "#f7f2fa", "color": "#1d1b20", "borderColor": "#79747e", "borderWidth": 1, "borderStyle": "solid", "radius": 4, "fontFamily": "Roboto, Arial, sans-serif", "fontSize": 16}, "semantics": {"role": "textbox"}},
+        "card": {"aliases": ["Card", "Surface", "MaterialCardView", "CardView", "ElevatedCard", "OutlinedCard"], "types": ["card"], "rendererKind": "surface", "layout": {"padding": 16}, "style": {"backgroundColor": "#f7f2fa", "color": "#1d1b20", "radius": 12}},
+        "text": {"aliases": ["Text", "TextView", "MaterialTextView"], "types": ["text"], "rendererKind": "text", "style": {"color": "#1d1b20", "fontFamily": "Roboto, Arial, sans-serif", "fontSize": 16, "lineHeight": 24}},
+        "switch": {"aliases": ["Switch", "SwitchMaterial"], "rendererKind": "switch", "layout": {"width": 52, "height": 32}, "style": {"backgroundColor": "#79747e", "color": "#ffffff", "radius": 16}, "semantics": {"role": "switch"}},
+        "checkbox": {"aliases": ["Checkbox", "CheckBox", "RadioButton"], "rendererKind": "checkbox", "layout": {"width": 48, "height": 48}, "style": {"color": "#6750a4"}, "semantics": {"role": "checkbox"}},
+        "navigation": {"aliases": ["NavigationBar", "NavigationRail", "TopAppBar", "CenterAlignedTopAppBar", "Toolbar"], "rendererKind": "navigation", "layout": {"minHeight": 64, "paddingHorizontal": 16}, "style": {"backgroundColor": "#fffbfe", "color": "#1d1b20"}, "semantics": {"role": "navigation"}},
+        "list-item": {"aliases": ["ListItem"], "rendererKind": "surface", "layout": {"minHeight": 56, "paddingHorizontal": 16, "paddingVertical": 8}, "style": {"backgroundColor": "transparent", "color": "#1d1b20"}},
+        "neutral": {"aliases": [], "rendererKind": "surface"},
+        "progress": {"aliases": ["LinearProgressIndicator", "CircularProgressIndicator", "ProgressBar"], "rendererKind": "progress", "layout": {"height": 4}, "style": {"backgroundColor": "#e7e0ec", "color": "#6750a4", "radius": 2}, "semantics": {"role": "progressbar"}}
+      }
+    },
+    "ios": {
+      "sources": [
+        {"title": "Apple Human Interface Guidelines — Components", "url": "https://developer.apple.com/design/human-interface-guidelines/components", "authority": "official"},
+        {"title": "Apple Human Interface Guidelines — Designing for iOS", "url": "https://developer.apple.com/design/human-interface-guidelines/designing-for-ios", "authority": "official"}
+      ],
+      "components": {
+        "button": {"aliases": ["Button", "button", "CupertinoButton"], "types": ["button"], "rendererKind": "button", "layout": {"minHeight": 44, "paddingHorizontal": 16}, "style": {"backgroundColor": "#007aff", "color": "#ffffff", "radius": 10, "fontFamily": "-apple-system, BlinkMacSystemFont, sans-serif", "fontSize": 17, "fontWeight": 600, "textAlign": "center"}, "semantics": {"role": "button"}},
+        "icon-button": {"aliases": ["IconButton"], "rendererKind": "icon-button", "layout": {"width": 44, "height": 44}, "style": {"backgroundColor": "transparent", "color": "#007aff", "radius": 22}, "semantics": {"role": "button"}},
+        "text-field": {"aliases": ["TextField", "SecureField", "textField", "textView", "CupertinoTextField"], "types": ["input"], "rendererKind": "input", "layout": {"minHeight": 44, "paddingHorizontal": 12}, "style": {"backgroundColor": "#e9e9eb", "color": "#000000", "radius": 10, "fontFamily": "-apple-system, BlinkMacSystemFont, sans-serif", "fontSize": 17}, "semantics": {"role": "textbox"}},
+        "card": {"aliases": ["GroupBox", "Section"], "types": ["card"], "rendererKind": "surface", "layout": {"padding": 16}, "style": {"backgroundColor": "#ffffff", "color": "#000000", "radius": 12, "boxShadow": "0 1px 3px rgba(0,0,0,.12)"}},
+        "text": {"aliases": ["Text", "Label", "label"], "types": ["text"], "rendererKind": "text", "style": {"color": "#000000", "fontFamily": "-apple-system, BlinkMacSystemFont, sans-serif", "fontSize": 17, "lineHeight": 22}},
+        "switch": {"aliases": ["Toggle", "switch"], "rendererKind": "switch", "layout": {"width": 51, "height": 31}, "style": {"backgroundColor": "#8e8e93", "color": "#ffffff", "radius": 16}, "semantics": {"role": "switch"}},
+        "checkbox": {"aliases": ["Checkbox"], "rendererKind": "checkbox", "layout": {"width": 44, "height": 44}, "style": {"color": "#007aff"}, "semantics": {"role": "checkbox"}},
+        "navigation": {"aliases": ["NavigationStack", "NavigationView", "navigationBar", "toolbar"], "rendererKind": "navigation", "layout": {"minHeight": 44, "paddingHorizontal": 16}, "style": {"backgroundColor": "rgba(249,249,249,.94)", "color": "#000000"}, "semantics": {"role": "navigation"}},
+        "list": {"aliases": ["List", "Form", "tableView", "collectionView"], "types": ["list"], "rendererKind": "list", "style": {"backgroundColor": "#f2f2f7", "color": "#000000"}},
+        "neutral": {"aliases": [], "rendererKind": "surface"},
+        "progress": {"aliases": ["ProgressView", "progressView"], "rendererKind": "progress", "layout": {"height": 4}, "style": {"backgroundColor": "#d1d1d6", "color": "#007aff", "radius": 2}, "semantics": {"role": "progressbar"}}
+      }
+    },
+    "macos": {
+      "sources": [
+        {"title": "Apple Human Interface Guidelines — Components", "url": "https://developer.apple.com/design/human-interface-guidelines/components", "authority": "official"},
+        {"title": "Apple Human Interface Guidelines — Designing for macOS", "url": "https://developer.apple.com/design/human-interface-guidelines/designing-for-macos", "authority": "official"}
+      ],
+      "components": {
+        "button": {"aliases": ["Button", "button"], "types": ["button"], "rendererKind": "button", "layout": {"minHeight": 28, "paddingHorizontal": 12}, "style": {"backgroundColor": "#0a84ff", "color": "#ffffff", "radius": 6, "fontFamily": "-apple-system, BlinkMacSystemFont, sans-serif", "fontSize": 13, "fontWeight": 500, "textAlign": "center"}, "semantics": {"role": "button"}},
+        "text-field": {"aliases": ["TextField", "SecureField", "textField", "textView"], "types": ["input"], "rendererKind": "input", "layout": {"minHeight": 22, "paddingHorizontal": 7}, "style": {"backgroundColor": "#ffffff", "color": "#1e1e1e", "borderColor": "#8e8e93", "borderWidth": 1, "borderStyle": "solid", "radius": 5, "fontSize": 13}, "semantics": {"role": "textbox"}},
+        "card": {"aliases": ["GroupBox", "Section"], "types": ["card"], "rendererKind": "surface", "layout": {"padding": 12}, "style": {"backgroundColor": "#f5f5f5", "color": "#1e1e1e", "radius": 8, "borderColor": "#d1d1d1", "borderWidth": 1, "borderStyle": "solid"}},
+        "text": {"aliases": ["Text", "Label", "label"], "types": ["text"], "rendererKind": "text", "style": {"color": "#1e1e1e", "fontFamily": "-apple-system, BlinkMacSystemFont, sans-serif", "fontSize": 13, "lineHeight": 17}},
+        "switch": {"aliases": ["Toggle", "switch"], "rendererKind": "switch", "layout": {"width": 38, "height": 22}, "style": {"backgroundColor": "#8e8e93", "color": "#ffffff", "radius": 11}, "semantics": {"role": "switch"}},
+        "navigation": {"aliases": ["NavigationSplitView", "toolbar", "NSToolbar", "NSSplitView"], "rendererKind": "navigation", "layout": {"minHeight": 38, "paddingHorizontal": 10}, "style": {"backgroundColor": "rgba(246,246,246,.94)", "color": "#1e1e1e", "borderColor": "#c8c8c8", "borderBottomWidth": 1, "borderStyle": "solid"}, "semantics": {"role": "navigation"}},
+        "list": {"aliases": ["List", "Table", "tableView", "collectionView"], "types": ["list"], "rendererKind": "list", "style": {"backgroundColor": "#ffffff", "color": "#1e1e1e"}},
+        "checkbox": {"aliases": ["CheckBox", "RadioButton", "checkBox", "radioButton", "segmentedControl"], "rendererKind": "checkbox", "layout": {"width": 28, "height": 22}, "style": {"color": "#0a84ff"}, "semantics": {"role": "checkbox"}},
+        "neutral": {"aliases": [], "rendererKind": "surface"},
+        "progress": {"aliases": ["ProgressView", "progressIndicator", "levelIndicator"], "rendererKind": "progress", "layout": {"height": 4}, "style": {"backgroundColor": "#d1d1d6", "color": "#0a84ff", "radius": 2}, "semantics": {"role": "progressbar"}}
+      }
+    },
+    "windows": {
+      "sources": [
+        {"title": "Windows app controls", "url": "https://learn.microsoft.com/en-us/windows/apps/design/controls/", "authority": "official"}
+      ],
+      "components": {
+        "button": {"aliases": ["Button", "HyperlinkButton"], "types": ["button"], "rendererKind": "button", "layout": {"minHeight": 32, "paddingHorizontal": 12}, "style": {"backgroundColor": "#005fb8", "color": "#ffffff", "radius": 4, "fontFamily": "Segoe UI, sans-serif", "fontSize": 14, "fontWeight": 600, "textAlign": "center"}, "semantics": {"role": "button"}},
+        "icon-button": {"aliases": ["AppBarButton"], "rendererKind": "icon-button", "layout": {"width": 40, "height": 40}, "style": {"backgroundColor": "transparent", "color": "#1a1a1a", "radius": 4}, "semantics": {"role": "button"}},
+        "text-field": {"aliases": ["TextBox", "PasswordBox", "AutoSuggestBox", "NumberBox"], "types": ["input"], "rendererKind": "input", "layout": {"minHeight": 32, "paddingHorizontal": 10}, "style": {"backgroundColor": "#ffffff", "color": "#1a1a1a", "borderColor": "#8a8886", "borderWidth": 1, "borderStyle": "solid", "radius": 4, "fontFamily": "Segoe UI, sans-serif", "fontSize": 14}, "semantics": {"role": "textbox"}},
+        "card": {"aliases": ["Border", "Expander"], "types": ["card"], "rendererKind": "surface", "layout": {"padding": 12}, "style": {"backgroundColor": "#ffffff", "color": "#1a1a1a", "radius": 8, "borderColor": "#e5e5e5", "borderWidth": 1, "borderStyle": "solid"}},
+        "text": {"aliases": ["TextBlock", "Label"], "types": ["text"], "rendererKind": "text", "style": {"color": "#1a1a1a", "fontFamily": "Segoe UI, sans-serif", "fontSize": 14, "lineHeight": 20}},
+        "switch": {"aliases": ["ToggleSwitch", "ToggleButton"], "rendererKind": "switch", "layout": {"width": 40, "height": 20}, "style": {"backgroundColor": "#8a8886", "color": "#ffffff", "radius": 10}, "semantics": {"role": "switch"}},
+        "checkbox": {"aliases": ["CheckBox", "RadioButton"], "rendererKind": "checkbox", "layout": {"width": 32, "height": 32}, "style": {"color": "#005fb8"}, "semantics": {"role": "checkbox"}},
+        "navigation": {"aliases": ["NavigationView", "CommandBar", "MenuBar", "ToolBar"], "rendererKind": "navigation", "layout": {"minHeight": 48, "paddingHorizontal": 12}, "style": {"backgroundColor": "#f3f3f3", "color": "#1a1a1a", "borderColor": "#e5e5e5", "borderBottomWidth": 1, "borderStyle": "solid"}, "semantics": {"role": "navigation"}},
+        "list": {"aliases": ["ListView", "GridView", "ItemsControl", "TreeView"], "types": ["list"], "rendererKind": "list", "style": {"backgroundColor": "#ffffff", "color": "#1a1a1a"}},
+        "neutral": {"aliases": [], "rendererKind": "surface"},
+        "progress": {"aliases": ["ProgressBar", "ProgressRing"], "rendererKind": "progress", "layout": {"height": 4}, "style": {"backgroundColor": "#d1d1d1", "color": "#005fb8", "radius": 2}, "semantics": {"role": "progressbar"}}
+      }
+    },
+    "flutter": {
+      "sources": [
+        {"title": "Flutter widget catalog", "url": "https://docs.flutter.dev/ui/widgets", "authority": "official"},
+        {"title": "Flutter Material component widgets", "url": "https://docs.flutter.dev/ui/widgets/material", "authority": "official"},
+        {"title": "Flutter Cupertino widgets", "url": "https://docs.flutter.dev/ui/widgets/cupertino", "authority": "official"}
+      ],
+      "components": {
+        "button": {"aliases": ["ElevatedButton", "FilledButton", "CupertinoButton"], "types": ["button"], "rendererKind": "button", "layout": {"minHeight": 48, "paddingHorizontal": 24}, "style": {"backgroundColor": "#6750a4", "color": "#ffffff", "radius": 20, "fontFamily": "Roboto, Arial, sans-serif", "fontSize": 14, "fontWeight": 500, "textAlign": "center"}, "semantics": {"role": "button"}},
+        "outlined-button": {"aliases": ["OutlinedButton"], "rendererKind": "button", "layout": {"minHeight": 48, "paddingHorizontal": 24}, "style": {"backgroundColor": "transparent", "color": "#6750a4", "borderColor": "#79747e", "borderWidth": 1, "borderStyle": "solid", "radius": 20, "fontSize": 14, "fontWeight": 500, "textAlign": "center"}, "semantics": {"role": "button"}},
+        "text-button": {"aliases": ["TextButton"], "rendererKind": "button", "layout": {"minHeight": 48, "paddingHorizontal": 12}, "style": {"backgroundColor": "transparent", "color": "#6750a4", "radius": 20, "fontSize": 14, "fontWeight": 500, "textAlign": "center"}, "semantics": {"role": "button"}},
+        "icon-button": {"aliases": ["IconButton", "FloatingActionButton"], "rendererKind": "icon-button", "layout": {"width": 48, "height": 48}, "style": {"backgroundColor": "transparent", "color": "#49454f", "radius": 24}, "semantics": {"role": "button"}},
+        "text-field": {"aliases": ["TextField", "TextFormField", "CupertinoTextField"], "types": ["input"], "rendererKind": "input", "layout": {"minHeight": 56, "paddingHorizontal": 16}, "style": {"backgroundColor": "#f7f2fa", "color": "#1d1b20", "borderColor": "#79747e", "borderWidth": 1, "borderStyle": "solid", "radius": 4, "fontSize": 16}, "semantics": {"role": "textbox"}},
+        "card": {"aliases": ["Card"], "types": ["card"], "rendererKind": "surface", "layout": {"padding": 16}, "style": {"backgroundColor": "#f7f2fa", "color": "#1d1b20", "radius": 12, "boxShadow": "0 1px 3px rgba(0,0,0,.16)"}},
+        "text": {"aliases": ["Text"], "types": ["text"], "rendererKind": "text", "style": {"color": "#1d1b20", "fontFamily": "Roboto, Arial, sans-serif", "fontSize": 14, "lineHeight": 20}},
+        "switch": {"aliases": ["Switch", "CupertinoSwitch"], "rendererKind": "switch", "layout": {"width": 52, "height": 32}, "style": {"backgroundColor": "#79747e", "color": "#ffffff", "radius": 16}, "semantics": {"role": "switch"}},
+        "checkbox": {"aliases": ["Checkbox", "Radio"], "rendererKind": "checkbox", "layout": {"width": 48, "height": 48}, "style": {"color": "#6750a4"}, "semantics": {"role": "checkbox"}},
+        "navigation": {"aliases": ["AppBar", "NavigationBar", "BottomNavigationBar"], "rendererKind": "navigation", "layout": {"minHeight": 64, "paddingHorizontal": 16}, "style": {"backgroundColor": "#fffbfe", "color": "#1d1b20"}, "semantics": {"role": "navigation"}},
+        "list-item": {"aliases": ["ListTile"], "rendererKind": "surface", "layout": {"minHeight": 56, "paddingHorizontal": 16, "paddingVertical": 8}, "style": {"backgroundColor": "transparent", "color": "#1d1b20"}},
+        "neutral": {"aliases": [], "rendererKind": "surface"},
+        "progress": {"aliases": ["LinearProgressIndicator", "CircularProgressIndicator"], "rendererKind": "progress", "layout": {"height": 4}, "style": {"backgroundColor": "#e7e0ec", "color": "#6750a4", "radius": 2}, "semantics": {"role": "progressbar"}}
+      }
+    },
+    "web": {
+      "sources": [
+        {"title": "HTML Living Standard", "url": "https://html.spec.whatwg.org/multipage/", "authority": "official-standard"},
+        {"title": "WAI-ARIA Authoring Practices", "url": "https://www.w3.org/WAI/ARIA/apg/", "authority": "official-standard"}
+      ],
+      "components": {
+        "button": {"aliases": ["button"], "types": ["button"], "rendererKind": "button", "layout": {"minHeight": 30, "paddingHorizontal": 8}, "style": {"backgroundColor": "#efefef", "color": "#111111", "borderColor": "#767676", "borderWidth": 1, "borderStyle": "solid", "radius": 2, "fontFamily": "Arial, sans-serif", "fontSize": 13, "textAlign": "center"}, "semantics": {"role": "button"}},
+        "input": {"aliases": ["input", "textarea", "select"], "types": ["input"], "rendererKind": "input", "layout": {"minHeight": 30, "paddingHorizontal": 6}, "style": {"backgroundColor": "#ffffff", "color": "#111111", "borderColor": "#767676", "borderWidth": 1, "borderStyle": "solid", "radius": 2, "fontFamily": "Arial, sans-serif", "fontSize": 13}, "semantics": {"role": "textbox"}},
+        "text": {"aliases": ["p", "span", "label", "h1", "h2", "h3", "h4", "h5", "h6"], "types": ["text"], "rendererKind": "text", "style": {"color": "#111111", "fontFamily": "Arial, sans-serif", "fontSize": 16, "lineHeight": 20}},
+        "navigation": {"aliases": ["nav"], "rendererKind": "navigation", "semantics": {"role": "navigation"}},
+        "list": {"aliases": ["ul", "ol", "table"], "types": ["list"], "rendererKind": "list"},
+        "neutral": {"aliases": [], "rendererKind": "surface"},
+        "link": {"aliases": ["a"], "rendererKind": "text", "style": {"color": "#0000ee", "textDecoration": "underline"}, "semantics": {"role": "link"}},
+        "progress": {"aliases": ["progress"], "rendererKind": "progress", "layout": {"height": 8}, "style": {"backgroundColor": "#d1d5db", "color": "#2563eb", "radius": 4}, "semantics": {"role": "progressbar"}}
+      }
+    }
+  }
+}

@@ -13,6 +13,7 @@ from android_xml_support import android_layout_metadata
 from apple_resource_resolver import AppleResourceCatalog, sf_symbol_asset
 from fidelity_adapter_api import AdapterResult, SourceContext
 from fidelity_core import property_evidence
+from platform_component_catalog import adapter_type_map
 
 
 def _slug(value: str, fallback: str = "node") -> str:
@@ -121,6 +122,7 @@ class AndroidXmlAdapter:
         "AppCompatImageButton": "button", "CardView": "card", "MaterialCardView": "card", "View": "divider", "Space": "spacer",
         "ProgressBar": "custom", "Guideline": "spacer", "Barrier": "spacer", "Group": "container",
     }
+    TYPES.update(adapter_type_map("android", "android-xml"))
 
     def __init__(self) -> None:
         self._catalogs: dict[str, AndroidResourceCatalog] = {}
@@ -403,7 +405,8 @@ class XamlAdapter:
     visual_tier = "none"
     native_evidence_required = True
     limitations = ("templates and bindings are not evaluated", "custom controls remain unsupported")
-    TYPES = {"Page": "container", "Window": "container", "UserControl": "container", "Grid": "container", "StackPanel": "container", "Canvas": "container", "Border": "card", "NavigationView": "container", "Frame": "container", "ScrollViewer": "container", "ListView": "list", "GridView": "list", "ItemsControl": "list", "TextBlock": "text", "Label": "text", "Button": "button", "HyperlinkButton": "button", "TextBox": "input", "PasswordBox": "input", "Image": "image", "SymbolIcon": "icon", "FontIcon": "icon", "Rectangle": "divider"}
+    TYPES = {"Page": "container", "Window": "container", "UserControl": "container", "Grid": "container", "StackPanel": "container", "Canvas": "container", "Border": "card", "Expander": "card", "NavigationView": "container", "CommandBar": "container", "MenuBar": "container", "ToolBar": "container", "Frame": "container", "ScrollViewer": "container", "ListView": "list", "GridView": "list", "ItemsControl": "list", "TreeView": "list", "TextBlock": "text", "Label": "text", "Button": "button", "HyperlinkButton": "button", "AppBarButton": "button", "ToggleSwitch": "button", "ToggleButton": "button", "CheckBox": "button", "RadioButton": "button", "TextBox": "input", "PasswordBox": "input", "AutoSuggestBox": "input", "NumberBox": "input", "Image": "image", "SymbolIcon": "icon", "FontIcon": "icon", "ProgressBar": "container", "ProgressRing": "container", "Rectangle": "divider"}
+    TYPES.update(adapter_type_map("windows", "xaml"))
 
     def supports(self, context: SourceContext) -> bool:
         return context.path.suffix.lower() == ".xaml" and any(value.startswith("windows-") for value in context.platforms)
@@ -466,14 +469,26 @@ class XamlAdapter:
 
 
 DECLARATIVE_TYPES = {
-    "VStack": "container", "HStack": "container", "ZStack": "container", "NavigationStack": "container", "ScrollView": "container", "Form": "container", "Section": "container", "List": "list", "Text": "text", "Button": "button", "TextField": "input", "SecureField": "input", "Image": "image", "AsyncImage": "image", "Label": "text", "Spacer": "spacer", "Divider": "divider", "Toggle": "button",
-    "Column": "container", "Row": "container", "Stack": "container", "Scaffold": "container", "Container": "container", "Padding": "container", "Center": "container", "Expanded": "container", "ListView": "list", "GridView": "list", "Card": "card", "ElevatedButton": "button", "TextButton": "button", "IconButton": "button", "TextFormField": "input", "SizedBox": "spacer", "Icon": "icon",
+    "VStack": "container", "LazyVStack": "container", "HStack": "container", "LazyHStack": "container", "ZStack": "container",
+    "Grid": "list", "LazyVGrid": "list", "LazyHGrid": "list", "NavigationStack": "container", "NavigationSplitView": "container",
+    "ScrollView": "container", "Form": "container", "Section": "container", "GroupBox": "card", "List": "list", "Table": "list",
+    "Text": "text", "Button": "button", "Link": "button", "Menu": "button", "Picker": "input", "Slider": "input",
+    "TextField": "input", "SecureField": "input", "Image": "image", "AsyncImage": "image", "Label": "text", "Spacer": "spacer",
+    "Divider": "divider", "Toggle": "button", "ProgressView": "container",
+    "SafeArea": "container", "SingleChildScrollView": "container", "Column": "container", "Row": "container", "Stack": "container",
+    "Wrap": "container", "Scaffold": "container", "Container": "container", "Padding": "container", "Center": "container",
+    "Expanded": "container", "Flexible": "container", "ListView": "list", "GridView": "list", "Card": "card", "ListTile": "card",
+    "ElevatedButton": "button", "FilledButton": "button", "OutlinedButton": "button", "TextButton": "button", "IconButton": "button",
+    "FloatingActionButton": "button", "CupertinoButton": "button", "TextFormField": "input", "CupertinoTextField": "input",
+    "Checkbox": "button", "Switch": "button", "CupertinoSwitch": "button", "Radio": "button", "AppBar": "container",
+    "NavigationBar": "container", "BottomNavigationBar": "container", "LinearProgressIndicator": "container",
+    "CircularProgressIndicator": "container", "SizedBox": "spacer", "Icon": "icon",
 }
 
 
 def _declarative_calls(body: str, types: set[str]) -> list[dict[str, Any]]:
     calls: list[dict[str, Any]] = []
-    pattern = re.compile(r"\b(" + "|".join(sorted(types, key=len, reverse=True)) + r")\b")
+    pattern = re.compile(r"\b(" + "|".join(re.escape(name) for name in sorted(types, key=len, reverse=True)) + r")\b")
     for match in pattern.finditer(body):
         cursor = match.end()
         while cursor < len(body) and body[cursor].isspace(): cursor += 1
@@ -530,14 +545,23 @@ def _translate_declarative(context: SourceContext, adapter: str, screen_name: st
     result = AdapterResult(adapter=adapter, tokens=tokens)
     screen_id, root_id = _slug(screen_name), f"{_slug(screen_name)}-root"
     result.nodes[root_id] = _root_node(context, adapter, f"project.{standard_prefix}.screen", _line(context.text, screen_name))
-    calls = _declarative_calls(body, set(DECLARATIVE_TYPES))
+    types = {**DECLARATIVE_TYPES, **adapter_type_map(platform, adapter)}
+    calls = _declarative_calls(body, set(types))
     records: list[tuple[dict[str, Any], str]] = []
     for index, call in enumerate(calls, start=1):
         widget, args = call["widget"], call["args"]
-        node_id, node_type = f"{screen_id}-{_slug(widget)}-{index}", DECLARATIVE_TYPES[widget]
+        node_id, node_type = f"{screen_id}-{_slug(widget)}-{index}", types[widget]
+        if platform == "flutter" and widget in {"Checkbox", "Switch", "CupertinoSwitch", "Radio"}:
+            node_type = "container"
         line = context.text.count("\n", 0, body_offset + call["start"]) + 1
-        native_prefix = "apple" if platform in {"ios", "macos"} else "material3" if platform == "android" else "project"
+        native_prefix = "apple" if platform == "ios" else "macos" if platform == "macos" else "material3" if platform == "android" else "flutter" if platform == "flutter" else "project"
         node: dict[str, Any] = {"type": node_type, "component": widget, "layout": {}, "style": {}, "children": [], "source": {"file": context.source, "line": line, "symbol": screen_name}, "confidence": "high", "standardRef": f"{native_prefix}.{standard_prefix}.{widget.lower()}", "inheritsAppearance": True, "provenance": {"component": property_evidence(context.source, line, widget, adapter, "exact")}}
+        if platform == "flutter" and widget in {"Checkbox", "Switch", "CupertinoSwitch", "Radio"}:
+            callback = re.search(r"\bonChanged\s*:\s*([^,\n]+)", args)
+            if callback and callback.group(1).strip() != "null":
+                role = "switch" if "Switch" in widget else "radio" if widget == "Radio" else "checkbox"
+                node["semantics"] = {"role": role}
+                node["provenance"]["semantics.role"] = property_evidence(context.source, line, callback.group(0), adapter, "high")
         literal = re.search(r"(?:text\s*:\s*|label\s*:\s*)?[\"']([^\"']+)[\"']", args)
         if literal and node_type in {"text", "button", "input"}:
             node["text"] = literal.group(1)
@@ -546,14 +570,14 @@ def _translate_declarative(context: SourceContext, adapter: str, screen_name: st
         if localized and apple_catalog and (resolved := apple_catalog.localized(localized.group(1))):
             node["text"] = resolved.value
             node["provenance"]["text"] = property_evidence(resolved.source, 1, localized.group(0), adapter, resolved.confidence)
-        if widget in {"VStack", "Column", "List", "ListView"}:
+        if widget in {"VStack", "LazyVStack", "Column", "List", "ListView", "SingleChildScrollView"}:
             _set(node, "layout.direction", "column", context, line, widget, adapter)
-        if widget in {"HStack", "Row"}:
+        if widget in {"HStack", "LazyHStack", "Row"}:
             _set(node, "layout.direction", "row", context, line, widget, adapter)
         if widget in {"ZStack", "Stack"}:
             _set(node, "layout.direction", "overlay", context, line, widget, adapter)
         alignment = re.search(r"\balignment\s*:\s*\.?(leading|trailing|center|top|bottom)", args)
-        if alignment and widget in {"VStack", "HStack", "ZStack"}:
+        if alignment and widget in {"VStack", "LazyVStack", "HStack", "LazyHStack", "ZStack"}:
             mapped = {"leading": "start", "trailing": "end", "top": "start", "bottom": "end", "center": "center"}[alignment.group(1)]
             _set(node, "layout.align", mapped, context, line, alignment.group(0), adapter)
         spacing = re.search(r"\bspacing\s*:\s*(-?\d+(?:\.\d+)?)", args)
@@ -627,7 +651,7 @@ def _translate_declarative(context: SourceContext, adapter: str, screen_name: st
         parents = [(candidate, candidate_id) for candidate, candidate_id in records if candidate["start"] < call["start"] < candidate["containEnd"]]
         parent_id = max(parents, key=lambda item: item[0]["start"])[1] if parents else root_id
         result.nodes[parent_id]["children"].append(node_id)
-    known = set(DECLARATIVE_TYPES) | {"Color", "Font", "String", "EdgeInsets", "RoundedRectangle", "MaterialApp", "ThemeData"}
+    known = set(types) | {"Color", "Font", "String", "EdgeInsets", "RoundedRectangle", "MaterialApp", "ThemeData"}
     for unknown in re.finditer(r"\b([A-Z]\w*)\s*(?:\(|\{)", body):
         if unknown.group(1) not in known:
             result.unsupported.append({"adapter": adapter, "file": context.source, "line": context.text.count("\n", 0, body_offset + unknown.start()) + 1, "expression": unknown.group(1), "reason": "unsupported-declarative-component"})
@@ -734,7 +758,9 @@ class AppleInterfaceXmlAdapter:
     resource_resolution = ("Asset Catalog images/colors", "authored interface strings")
     layout_features = ("authored frames", "stack axis/spacing", "basic width/height/center Auto Layout constraints")
     limitations = ("complex Auto Layout equations are not solved", "runtime UIKit/AppKit mutations are unsupported")
-    TYPES = {"view": "container", "stackView": "container", "scrollView": "container", "tableView": "list", "collectionView": "list", "label": "text", "button": "button", "textField": "input", "textView": "input", "imageView": "image", "separator": "divider"}
+    TYPES = {"view": "container", "stackView": "container", "scrollView": "container", "tableView": "list", "collectionView": "list", "label": "text", "button": "button", "textField": "input", "textView": "input", "switch": "button", "slider": "input", "segmentedControl": "input", "datePicker": "input", "navigationBar": "container", "toolbar": "container", "progressView": "container", "imageView": "image", "separator": "divider"}
+    TYPES.update(adapter_type_map("ios", "apple-interface-xml"))
+    TYPES.update(adapter_type_map("macos", "apple-interface-xml"))
 
     def __init__(self) -> None:
         self._catalogs: dict[str, AppleResourceCatalog] = {}
