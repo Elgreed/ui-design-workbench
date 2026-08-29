@@ -10,7 +10,10 @@ import os
 import subprocess
 import sys
 import tempfile
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10
+    import tomli as tomllib
 import unittest
 import zipfile
 from pathlib import Path
