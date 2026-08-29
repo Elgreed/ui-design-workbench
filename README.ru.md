@@ -246,6 +246,8 @@ uidw --repo <repo> native status
 
 Для MCP та же ограниченная операция называется `ui_native_status`. Android-discovery распознаёт Compose Screenshot, Paparazzi, Roborazzi и готовность эмулятора. Apple-discovery распознаёт Xcode Preview, snapshot-тесты и готовность симулятора; для нативного Apple-снимка всегда нужен macOS-воркер с Xcode. Нативное состояние кешируется отдельно от базового IR, а снимок становится устаревшим после изменения исходников.
 
+Встроенный структурный Android-рендер разрешает исходные `strings`, `colors`, `dimens`, наследуемые стили, bitmap/vector/shape drawables и статические layout includes. Для Compose переносятся основные size/padding/fill/weight/alignment/typography modifiers и ограниченный набор Material icons. Сложные constraints, custom drawing, runtime-темы и неизвестные иконки остаются явными gaps, а не получают незаметные browser defaults.
+
 Для Flutter и React Native необходимо указать целевую платформу перед платформенными UX-выводами.
 
 ## Основные команды
@@ -316,4 +318,4 @@ fixtures/golden/            Регрессионные fixtures адаптеро
 
 ## Версия
 
-Текущая версия CLI: `0.4.0`.
+Текущая версия CLI: `0.4.1`.

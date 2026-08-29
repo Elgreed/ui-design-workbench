@@ -18,6 +18,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Iterable
 
+from android_resource_resolver import android_layout_role
 from fidelity_adapters import SourceContext, registered_adapters, translate_sources
 from fidelity_core import FIDELITY_SCHEMA_VERSION, property_evidence, seal_baseline
 
@@ -29,7 +30,7 @@ EXCLUDED_DIRS = {
     ".agents", ".cursor", ".gemini", ".opencode", ".ui-design-workbench",
     ".superpowers",
 }
-SCANNER_VERSION = 8
+SCANNER_VERSION = 9
 SOURCE_EXTENSIONS = {
     ".kt", ".kts", ".xml", ".swift", ".storyboard", ".xib", ".dart",
     ".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".html",
@@ -152,7 +153,10 @@ def classify_role(path: Path, text: str) -> str:
         return "navigation"
     if any(word in name for word in ("theme", "token", "color", "typography", "style")) or "/res/values" in normalized:
         return "theme"
-    if any(word in name for word in ("screen", "page", "view", "activity", "fragment", "window", "dialog")) or "/res/layout" in normalized:
+    layout_role = android_layout_role(path, text)
+    if layout_role != "unknown":
+        return layout_role
+    if any(word in name for word in ("screen", "page", "view", "activity", "fragment", "window", "dialog")):
         return "screen"
     if any(word in name for word in ("component", "widget", "control")):
         return "component"
@@ -585,7 +589,7 @@ def screen_candidates(source: str, path: Path, text: str, platforms: list[str], 
                 "confidence": "high" if symbol["name"].endswith(screen_suffixes) else "approximate",
             })
     normalized = path.as_posix().lower()
-    if path.suffix.lower() == ".xml" and "/res/layout" in f"/{normalized}":
+    if path.suffix.lower() == ".xml" and "/res/layout" in f"/{normalized}" and role == "screen":
         candidates.append({
             "name": "".join(part.capitalize() for part in path.stem.split("_")),
             "file": source,
@@ -653,7 +657,7 @@ def extract_navigation_targets(text: str, source: str) -> list[dict[str, Any]]:
     return unique_dicts(targets, ("target", "file", "line"))
 
 
-def component_candidates(source: str, platforms: list[str], symbols: list[dict[str, Any]], role: str) -> list[dict[str, Any]]:
+def component_candidates(source: str, path: Path, platforms: list[str], symbols: list[dict[str, Any]], role: str) -> list[dict[str, Any]]:
     """Return conservative project-component candidates for later source inspection."""
     candidates: list[dict[str, Any]] = []
     screen_suffixes = ("Screen", "Page", "Activity", "Fragment", "ViewController", "Window", "WindowController", "Pane")
@@ -663,6 +667,20 @@ def component_candidates(source: str, platforms: list[str], symbols: list[dict[s
         "Carousel", "ImmersiveList", "Surface", "NavigationView",
     }
     component_kinds = {"composable", "component", "view", "widget", "class"}
+    normalized = path.as_posix().lower()
+    if role == "component" and path.suffix.lower() == ".xml" and "/res/layout" in f"/{normalized}":
+        candidates.append({
+            "id": f"{source}#{path.stem}",
+            "name": "".join(part.capitalize() for part in path.stem.split("_")),
+            "platform": platforms[0] if platforms else "android-views",
+            "kind": "project",
+            "source": {"file": source, "line": 1, "symbol": path.stem},
+            "inspection": "pending",
+            "confidence": "high",
+            "variants": [],
+            "states": [],
+            "tokenRefs": [],
+        })
     for symbol in symbols:
         name = str(symbol.get("name", ""))
         if (
@@ -733,7 +751,7 @@ def analyze_file(root: Path, path: Path) -> dict[str, Any] | None:
         "routes": file_routes,
         "navigationTargets": file_navigation_targets,
         "surfaces": surfaces,
-        "components": component_candidates(source, platforms, symbols, role),
+        "components": component_candidates(source, path, platforms, symbols, role),
         "themes": themes,
         "tokenFile": source if role == "theme" else None,
     }

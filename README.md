@@ -246,6 +246,8 @@ uidw --repo <repo> native status
 
 The same bounded operation is available to MCP clients as `ui_native_status`. Android discovery recognizes Compose Screenshot, Paparazzi, Roborazzi, and emulator prerequisites. Apple discovery recognizes Xcode previews, snapshot tests, and simulator prerequisites; an Apple capture always requires a macOS Xcode worker. Native state is cached separately from baseline IR and matching captures are invalidated when source changes.
 
+The built-in Android structural renderer resolves source `strings`, `colors`, `dimens`, inherited styles, bitmap/vector/shape drawables, and static layout includes. It also transfers common Compose size/padding/fill/weight/alignment/typography modifiers and a bounded set of Material icons. Complex constraints, custom drawing, runtime themes, and unsupported icons stay explicit gaps instead of silently receiving browser defaults.
+
 Flutter and React Native require an explicit target platform before platform-specific UX conclusions can be made.
 
 ## Common commands
@@ -316,4 +318,4 @@ fixtures/golden/            Adapter and workbench-shell regression fixtures
 
 ## Version
 
-Current CLI version: `0.4.0`.
+Current CLI version: `0.4.1`.

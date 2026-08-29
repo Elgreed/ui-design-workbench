@@ -2,6 +2,8 @@
 
 Source analysis and native rendering are separate stages. The base UI IR remains deterministic and portable; native screenshots, geometry, and semantic trees live in `native-render-state.json` in the UIDW cache.
 
+The default Android projection may resolve source resources and deterministic layout semantics before native verification. This improves ordinary mockups but does not change the fidelity level from `structural`: resource resolution is evidence about inputs, not proof of the platform's final layout pass.
+
 ## Fidelity levels
 
 1. `discovered`: source entry points, routes, resources, previews, and provider configuration were found.
@@ -36,4 +38,3 @@ Android providers can be orchestrated on a configured Android host. Apple render
 - Store generated artifacts under the UIDW cache, never beside source unless explicitly requested.
 - Artifact references in native state are bundle-relative and cannot escape with absolute paths or `..`.
 - Keep baseline IR immutable. Native state may map a capture to a screen/state but must not rewrite source-derived nodes.
-

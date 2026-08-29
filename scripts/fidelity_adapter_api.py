@@ -60,6 +60,8 @@ def adapter_capabilities() -> list[dict[str, Any]]:
             "visualTier": str(getattr(adapter, "visual_tier", "none")),
             "nativeEvidenceRequired": bool(getattr(adapter, "native_evidence_required", False)),
             "nativeProviders": list(getattr(adapter, "native_providers", ())),
+            "resourceResolution": list(getattr(adapter, "resource_resolution", ())),
+            "layoutFeatures": list(getattr(adapter, "layout_features", ())),
             "limitations": list(getattr(adapter, "limitations", ())),
         }
         for adapter in _ADAPTERS
@@ -68,6 +70,10 @@ def adapter_capabilities() -> list[dict[str, Any]]:
 
 def translate_sources(contexts: list[SourceContext]) -> AdapterResult:
     combined = AdapterResult(adapter="registry")
+    for adapter in _ADAPTERS:
+        prepare = getattr(adapter, "prepare", None)
+        if callable(prepare):
+            prepare(contexts)
     for context in contexts:
         adapter = next((candidate for candidate in _ADAPTERS if candidate.supports(context)), None)
         if adapter is None:

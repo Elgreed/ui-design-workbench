@@ -8,6 +8,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
+from android_resource_resolver import AndroidResourceCatalog
 from fidelity_adapter_api import AdapterResult, SourceContext
 from fidelity_core import property_evidence
 
@@ -98,7 +99,9 @@ class AndroidXmlAdapter:
     visual_tier = "none"
     native_evidence_required = True
     native_providers = ("paparazzi", "roborazzi", "android-emulator")
-    limitations = ("custom views are not expanded", "constraint equations are preserved only as unsupported source")
+    resource_resolution = ("values strings/colors/dimens", "styles", "bitmap/vector/shape drawables", "static layout includes")
+    layout_features = ("LinearLayout gravity/weight", "Frame/Constraint overlay", "parent-edge centering", "directional padding/margins", "image scaleType")
+    limitations = ("custom views are not expanded", "complex ConstraintLayout equations and runtime resources remain explicit gaps")
     TYPES = {
         "LinearLayout": "container", "ConstraintLayout": "container", "FrameLayout": "container", "CoordinatorLayout": "container",
         "ScrollView": "container", "HorizontalScrollView": "container", "RecyclerView": "list", "ListView": "list", "GridView": "list",
@@ -106,11 +109,25 @@ class AndroidXmlAdapter:
         "TextInputEditText": "input", "ImageView": "image", "ImageButton": "button", "CardView": "card", "MaterialCardView": "card", "View": "divider",
     }
 
+    def __init__(self) -> None:
+        self._catalogs: dict[str, AndroidResourceCatalog] = {}
+
+    def prepare(self, contexts: list[SourceContext]) -> None:
+        roots = {str(context.root.resolve()): context.root for context in contexts if self.supports(context)}
+        self._catalogs = {key: AndroidResourceCatalog.discover(root) for key, root in roots.items()}
+
+    def _catalog(self, context: SourceContext) -> AndroidResourceCatalog:
+        key = str(context.root.resolve())
+        if key not in self._catalogs:
+            self._catalogs[key] = AndroidResourceCatalog.discover(context.root)
+        return self._catalogs[key]
+
     def supports(self, context: SourceContext) -> bool:
         return context.path.suffix.lower() == ".xml" and any(value.startswith("android-") for value in context.platforms)
 
     def translate(self, context: SourceContext) -> AdapterResult:
         result = AdapterResult(adapter=self.id)
+        catalog = self._catalog(context)
         try:
             root = ET.fromstring(context.text)
         except ET.ParseError as exc:
@@ -135,49 +152,165 @@ class AndroidXmlAdapter:
         result.nodes[root_id] = _root_node(context, self.id, "project.android.layout")
         count = 0
 
-        def convert(element: ET.Element) -> str:
+        def convert(element: ET.Element, active_context: SourceContext, active_text: str, include_stack: tuple[str, ...] = ()) -> str:
             nonlocal count
             count += 1
-            raw_tag, attrs = _local(element.tag), _attrs(element)
+            raw_tag, explicit_attrs = _local(element.tag), _attrs(element)
+            if raw_tag == "include":
+                reference = explicit_attrs.get("layout", "")
+                line = _line(active_text, reference or "<include")
+                node_id = f"{screen_id}-include-{count}"
+                node = {
+                    "type": "container", "component": "include", "layout": {"width": "fill"}, "style": {}, "children": [],
+                    "source": {"file": active_context.source, "line": line}, "confidence": "high", "standardRef": "project.android.include",
+                    "provenance": {"component": property_evidence(active_context.source, line, reference or "include", self.id, "exact")},
+                }
+                target = catalog.layout(reference)
+                if not target or reference in include_stack:
+                    result.unsupported.append({"adapter": self.id, "file": active_context.source, "line": line, "expression": reference, "reason": "unresolved-or-cyclic-layout-include"})
+                else:
+                    try:
+                        target_text = target.read_text(encoding="utf-8", errors="replace")
+                        target_root = ET.fromstring(target_text)
+                        target_context = SourceContext(active_context.root, target, target.relative_to(active_context.root).as_posix(), target_text, active_context.platforms, "component")
+                        candidates = list(target_root) if _local(target_root.tag) == "merge" else [target_root]
+                        node["children"] = [convert(child, target_context, target_text, (*include_stack, reference)) for child in candidates]
+                    except (OSError, ET.ParseError, ValueError) as exc:
+                        result.unsupported.append({"adapter": self.id, "file": active_context.source, "line": line, "expression": reference, "reason": f"invalid-layout-include:{type(exc).__name__}"})
+                result.nodes[node_id] = node
+                return node_id
+            style_values, style_entry = catalog.style(explicit_attrs.get("style"))
+            normalized_style = {key.rsplit(":", 1)[-1]: value for key, value in style_values.items()}
+            attrs = {**normalized_style, **explicit_attrs}
             short = raw_tag.rsplit(".", 1)[-1]
             node_id = f"{screen_id}-{_slug(attrs.get('id', '').split('/')[-1] or short)}-{count}"
             node_type = self.TYPES.get(short, "custom")
-            line = _line(context.text, f"<{raw_tag}")
+            line = _line(active_text, f"<{raw_tag}")
             standard_prefix = "androidtv" if platform == "android-tv" else "material3" if short.startswith("Material") or "TextInput" in short else "project"
             node: dict[str, Any] = {
-                "type": node_type, "component": raw_tag, "layout": {}, "style": {}, "children": [], "source": {"file": context.source, "line": line},
+                "type": node_type, "component": raw_tag, "layout": {}, "style": {}, "children": [], "source": {"file": active_context.source, "line": line},
                 "confidence": "high" if node_type != "custom" else "unsupported", "standardRef": f"{standard_prefix}.android-xml.{short.lower()}", "provenance": {},
             }
             if node_type != "custom":
                 node["inheritsAppearance"] = True
-                node["provenance"]["component"] = property_evidence(context.source, line, raw_tag, self.id, "exact")
+                node["provenance"]["component"] = property_evidence(active_context.source, line, raw_tag, self.id, "exact")
             else:
-                result.unsupported.append({"adapter": self.id, "file": context.source, "line": line, "expression": raw_tag, "reason": "unsupported-android-view"})
+                result.unsupported.append({"adapter": self.id, "file": active_context.source, "line": line, "expression": raw_tag, "reason": "unsupported-android-view"})
+            if short in {"FrameLayout", "ConstraintLayout", "CoordinatorLayout"}:
+                _set(node, "layout.direction", "overlay", active_context, line, short, self.id)
             mapping = {
                 "layout_width": ("layout.width", "spacing"), "layout_height": ("layout.height", "spacing"), "padding": ("layout.padding", "spacing"),
-                "layout_margin": ("layout.margin", "spacing"), "background": ("style.background", "colors"), "textColor": ("style.color", "colors"),
-                "textSize": ("style.fontSize", "typography"), "alpha": ("style.opacity", "spacing"),
+                "paddingHorizontal": ("layout.paddingHorizontal", "spacing"), "paddingVertical": ("layout.paddingVertical", "spacing"),
+                "paddingStart": ("layout.paddingLeft", "spacing"), "paddingEnd": ("layout.paddingRight", "spacing"), "paddingTop": ("layout.paddingTop", "spacing"), "paddingBottom": ("layout.paddingBottom", "spacing"),
+                "layout_margin": ("layout.margin", "spacing"), "layout_marginHorizontal": ("layout.marginHorizontal", "spacing"), "layout_marginVertical": ("layout.marginVertical", "spacing"),
+                "layout_marginStart": ("layout.marginLeft", "spacing"), "layout_marginEnd": ("layout.marginRight", "spacing"), "layout_marginTop": ("layout.marginTop", "spacing"), "layout_marginBottom": ("layout.marginBottom", "spacing"),
+                "minWidth": ("layout.minWidth", "spacing"), "minHeight": ("layout.minHeight", "spacing"), "maxWidth": ("layout.maxWidth", "spacing"), "maxHeight": ("layout.maxHeight", "spacing"),
+                "textColor": ("style.color", "color"), "textSize": ("style.fontSize", "dimen"), "alpha": ("style.opacity", "spacing"), "fontFamily": ("style.fontFamily", "font"),
+                "tint": ("style.color", "color"),
             }
             for attr, (path, group) in mapping.items():
                 if attr in attrs:
-                    _set(node, path, _normalize_ref(attrs[attr], group), context, line, f'{attr}="{attrs[attr]}"', self.id)
+                    resolved = catalog.resolve(attrs[attr], group, normalized_style)
+                    value = resolved.value if resolved.resolved else _normalize_ref(attrs[attr], "colors" if group == "color" else group)
+                    source = resolved.source or (style_entry.source if attr not in explicit_attrs and style_entry else active_context.source)
+                    source_line = resolved.line if resolved.source else style_entry.line if attr not in explicit_attrs and style_entry else line
+                    group_name, key = path.split(".", 1)
+                    node.setdefault(group_name, {})[key] = value
+                    node["provenance"][path] = property_evidence(source, source_line, f'{attr}="{attrs[attr]}"', self.id, resolved.confidence if resolved.source else "exact")
             if attrs.get("orientation") in {"vertical", "horizontal"}:
-                _set(node, "layout.direction", "column" if attrs["orientation"] == "vertical" else "row", context, line, f'orientation="{attrs["orientation"]}"', self.id)
+                _set(node, "layout.direction", "column" if attrs["orientation"] == "vertical" else "row", active_context, line, f'orientation="{attrs["orientation"]}"', self.id)
+            direction = node.get("layout", {}).get("direction", "column")
+            gravity = attrs.get("gravity", "")
+            if gravity:
+                if "center" == gravity or "center_horizontal" in gravity:
+                    _set(node, "layout.align" if direction == "column" else "layout.justify", "center", active_context, line, f'gravity="{gravity}"', self.id)
+                if "center" == gravity or "center_vertical" in gravity:
+                    _set(node, "layout.justify" if direction == "column" else "layout.align", "center", active_context, line, f'gravity="{gravity}"', self.id)
+                if "end" in gravity or "right" in gravity:
+                    _set(node, "layout.align" if direction == "column" else "layout.justify", "end", active_context, line, f'gravity="{gravity}"', self.id)
+            layout_gravity = attrs.get("layout_gravity", "")
+            if "center" in layout_gravity:
+                _set(node, "layout.alignSelf", "center", active_context, line, f'layout_gravity="{layout_gravity}"', self.id)
+                _set(node, "layout.justifySelf", "center", active_context, line, f'layout_gravity="{layout_gravity}"', self.id)
+            if attrs.get("layout_weight"):
+                _set(node, "layout.grow", _normalize_ref(attrs["layout_weight"]), active_context, line, f'layout_weight="{attrs["layout_weight"]}"', self.id)
+            text_style = attrs.get("textStyle", "")
+            if "bold" in text_style:
+                _set(node, "style.fontWeight", 700, active_context, line, f'textStyle="{text_style}"', self.id)
+            if "italic" in text_style:
+                _set(node, "style.fontStyle", "italic", active_context, line, f'textStyle="{text_style}"', self.id)
+            text_alignment = {"center": "center", "viewStart": "start", "textStart": "start", "viewEnd": "end", "textEnd": "end"}.get(attrs.get("textAlignment", ""))
+            if text_alignment:
+                _set(node, "style.textAlign", text_alignment, active_context, line, f'textAlignment="{attrs["textAlignment"]}"', self.id)
+            constraints = {key: value for key, value in attrs.items() if key.startswith("layout_constraint")}
+            horizontal_center = constraints.get("layout_constraintStart_toStartOf") == "parent" and constraints.get("layout_constraintEnd_toEndOf") == "parent"
+            vertical_center = constraints.get("layout_constraintTop_toTopOf") == "parent" and constraints.get("layout_constraintBottom_toBottomOf") == "parent"
+            if horizontal_center:
+                _set(node, "layout.justifySelf", "stretch" if attrs.get("layout_width") == "0dp" else "center", active_context, line, "horizontal parent constraints", self.id, "high")
+                if attrs.get("layout_width") == "0dp": node["layout"]["width"] = "fill"
+            if vertical_center:
+                _set(node, "layout.alignSelf", "stretch" if attrs.get("layout_height") == "0dp" else "center", active_context, line, "vertical parent constraints", self.id, "high")
+                if attrs.get("layout_height") == "0dp": node["layout"]["height"] = "fill"
+            unsupported_constraints = [key for key in constraints if key not in {"layout_constraintStart_toStartOf", "layout_constraintEnd_toEndOf", "layout_constraintTop_toTopOf", "layout_constraintBottom_toBottomOf"}]
+            if unsupported_constraints:
+                result.unsupported.append({"adapter": self.id, "file": active_context.source, "line": line, "expression": ", ".join(sorted(unsupported_constraints)), "reason": "unsupported-constraint-equation"})
             if attrs.get("text"):
-                node["text"] = attrs["text"]
-                node["provenance"]["text"] = property_evidence(context.source, line, f'text="{attrs["text"]}"', self.id, "exact")
+                resolved = catalog.resolve(attrs["text"], "string", normalized_style)
+                node["text"] = resolved.value if resolved.resolved else attrs["text"]
+                node["provenance"]["text"] = property_evidence(resolved.source or active_context.source, resolved.line if resolved.source else line, f'text="{attrs["text"]}"', self.id, resolved.confidence if resolved.source else "exact")
+            if attrs.get("hint"):
+                resolved = catalog.resolve(attrs["hint"], "string", normalized_style)
+                node["placeholder"] = resolved.value if resolved.resolved else attrs["hint"]
+                node["provenance"]["placeholder"] = property_evidence(resolved.source or active_context.source, resolved.line if resolved.source else line, f'hint="{attrs["hint"]}"', self.id, resolved.confidence if resolved.source else "exact")
+            if attrs.get("contentDescription"):
+                resolved = catalog.resolve(attrs["contentDescription"], "string", normalized_style)
+                node["alt"] = resolved.value if resolved.resolved else attrs["contentDescription"]
+                node["semantics"] = {"role": "button" if node_type == "button" else "image", "label": node["alt"]}
+                node["provenance"]["alt"] = property_evidence(resolved.source or active_context.source, resolved.line if resolved.source else line, f'contentDescription="{attrs["contentDescription"]}"', self.id, resolved.confidence if resolved.source else "exact")
+            if attrs.get("background", "").startswith("@drawable/"):
+                drawable = catalog.drawable(attrs["background"], normalized_style)
+                node["style"].update(drawable.style)
+                for key in drawable.style:
+                    node["provenance"][f"style.{key}"] = property_evidence(drawable.source, drawable.line, attrs["background"], self.id, drawable.confidence)
+                if not drawable.style:
+                    result.unsupported.append({"adapter": self.id, "file": active_context.source, "line": line, "expression": attrs["background"], "reason": "unsupported-background-drawable"})
+            elif attrs.get("background"):
+                resolved = catalog.resolve(attrs["background"], "color", normalized_style)
+                node["style"]["backgroundColor"] = resolved.value if resolved.resolved else attrs["background"]
+                node["provenance"]["style.backgroundColor"] = property_evidence(resolved.source or active_context.source, resolved.line if resolved.source else line, attrs["background"], self.id, resolved.confidence if resolved.source else "exact")
             if attrs.get("src") or attrs.get("srcCompat"):
                 asset = attrs.get("srcCompat") or attrs.get("src")
-                node["asset"] = asset
-                node["provenance"]["asset"] = property_evidence(context.source, line, str(asset), self.id, "exact")
+                drawable = catalog.drawable(str(asset), normalized_style)
+                node["asset"] = drawable.asset or asset
+                node["style"].update(drawable.style)
+                node["provenance"]["asset"] = property_evidence(drawable.source or active_context.source, drawable.line if drawable.source else line, str(asset), self.id, drawable.confidence)
+                if not drawable.asset:
+                    result.unsupported.append({"adapter": self.id, "file": active_context.source, "line": line, "expression": asset, "reason": "unsupported-android-drawable"})
+            scale_types = {"centerCrop": "cover", "fitCenter": "contain", "centerInside": "contain", "fitXY": "fill", "center": "none"}
+            if attrs.get("scaleType") in scale_types:
+                _set(node, "style.objectFit", scale_types[attrs["scaleType"]], active_context, line, f'scaleType="{attrs["scaleType"]}"', self.id)
             if attrs.get("focusable") == "true" or platform == "android-tv" and node_type in {"button", "input"}:
                 node["states"] = {"default": {}, "focused": {"style": {"outline": "source-focus"}}}
-            node["children"] = [convert(child) for child in element if isinstance(child.tag, str)]
+            node["children"] = [convert(child, active_context, active_text, include_stack) for child in element if isinstance(child.tag, str)]
+            if short == "ImageButton" and node.get("asset"):
+                icon_id = f"{node_id}-icon"
+                result.nodes[icon_id] = {
+                    "type": "icon", "component": "ImageButton.drawable", "asset": node["asset"], "alt": node.get("alt", ""),
+                    "layout": {"width": "fill", "height": "fill"}, "style": {"objectFit": node.get("style", {}).get("objectFit", "contain")}, "children": [],
+                    "source": {"file": active_context.source, "line": line}, "confidence": node.get("confidence", "high"), "standardRef": node.get("standardRef"),
+                    "provenance": {"asset": node["provenance"].get("asset", property_evidence(active_context.source, line, str(node["asset"]), self.id, "exact"))},
+                }
+                node["children"].insert(0, icon_id)
+            if node.get("layout", {}).get("direction") == "overlay":
+                for child_id in node["children"]:
+                    result.nodes[child_id].setdefault("layout", {})["gridArea"] = "1 / 1"
             result.nodes[node_id] = node
             return node_id
 
-        result.nodes[root_id]["children"] = [convert(root)]
-        result.screens.append({"id": screen_id, "name": context.path.stem, "root": root_id, "route": "", "platform": platform, "source": {"file": context.source, "line": 1, "symbol": context.path.stem}, "confidence": "high"})
+        candidates = list(root) if _local(root.tag) == "merge" else [root]
+        result.nodes[root_id]["children"] = [convert(child, context, context.text) for child in candidates]
+        if context.role == "screen":
+            result.screens.append({"id": screen_id, "name": context.path.stem, "root": root_id, "route": "", "platform": platform, "source": {"file": context.source, "line": 1, "symbol": context.path.stem}, "confidence": "high"})
         return result
 
 
