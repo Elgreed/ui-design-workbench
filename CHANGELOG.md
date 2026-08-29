@@ -6,6 +6,21 @@ Not every historical version was published as a GitHub Release or package artifa
 
 ## [Unreleased]
 
+### Added
+
+- Stable `scopeHash` values and `if-none-match` support for reusing unchanged agent context without returning it again.
+
+### Changed
+
+- Model-facing screen scopes now summarize provenance by property and fetch full source expressions only through explicit fidelity requests.
+- CLI fallback routing now starts with bounded `scope` discovery instead of the larger project context.
+
+### Fixed
+
+- Token budgets now return a compact `over-budget` result instead of an oversized payload or a partial node tree.
+- Legacy screen context now includes only referenced tokens and relevant theme overrides.
+- Default scoped output no longer exposes absolute project or IR paths.
+
 ## [0.6.1] - 2026-08-29
 
 ### Added

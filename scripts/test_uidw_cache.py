@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import tempfile
@@ -362,6 +364,45 @@ class IncrementalCacheTests(unittest.TestCase):
         text = output.read_text(encoding="utf-8")
         self.assertIn("UI Design Workbench context", text)
         self.assertIn("Estimated tokens", text)
+
+    def test_scope_cli_initializes_without_prior_context_command(self) -> None:
+        output = io.StringIO()
+        argv = ["uidw", "--repo", str(self.repo), "--json", "scope", "--budget", "4000"]
+        with mock.patch("sys.argv", argv), contextlib.redirect_stdout(output):
+            code = uidw.main()
+        result = json.loads(output.getvalue())
+        self.assertEqual(code, 0)
+        self.assertEqual(result["status"], "ready")
+        self.assertTrue(Path(result["contextFile"]).is_file())
+
+    def test_screen_context_keeps_only_referenced_tokens(self) -> None:
+        uidw.initialize(self.repo)
+        paths = uidw.state_paths(self.repo)
+        ir = uidw.read_json(paths["ir"], {})
+        screen = ir["screens"][0]
+        ir["nodes"][screen["root"]].setdefault("style", {})["background"] = "$colors.used"
+        ir["tokens"] = {"colors": {"used": {"value": "#fff"}, "unused": {"value": "#f00"}}}
+        uidw.write_json(paths["ir"], ir)
+
+        output = uidw.write_screen_context(paths, screen["id"])
+        context = uidw.read_json(output, {})
+
+        self.assertIn("used", context["tokens"]["colors"])
+        self.assertNotIn("unused", context["tokens"]["colors"])
+        self.assertEqual(context["repoRoot"], "<project-root>")
+
+    def test_screen_budget_never_returns_a_partial_node_tree(self) -> None:
+        payload = {
+            "version": 1,
+            "screen": {"id": "large", "name": "Large"},
+            "nodes": {"root": {"type": "text", "text": "x" * 10_000}},
+            "tokens": {},
+            "themes": {},
+        }
+        bounded = uidw.trim_context_to_budget(payload, 256)
+        self.assertEqual(bounded["status"], "over-budget")
+        self.assertNotIn("nodes", bounded)
+        self.assertFalse(bounded["contextBudget"]["structuralTruncation"])
 
     def test_detail_change_updates_mock_data_without_source_rescan(self) -> None:
         uidw.initialize(self.repo)

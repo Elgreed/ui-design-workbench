@@ -18,6 +18,8 @@ SERVER_INSTRUCTIONS = (
     "If ui_project returns setupRequired, ask the user only for low, medium, or high, then call "
     "ui_configure with that choice before continuing. "
     "Do not request or embed the complete UI IR when bounded context is sufficient. "
+    "ui_scope returns compact provenance by default; call ui_fidelity only for nodes that need full evidence. "
+    "Reuse scopeHash through if_none_match before requesting the same scope again. "
     "Use ui_prepare_job for review, proposal, or implementation handoffs. Review and proposal work "
     "must preserve immutable baseline UI and return sparse ui-ir.patch.json operations; application "
     "source changes require an explicit implementation request. Use ui_build_preview for projection "
@@ -47,9 +49,9 @@ def project_summary(repo: str | None, default_repo: Path) -> dict[str, Any]:
     return {
         "status": initialization.get("status"),
         "cache": initialization.get("initialization", {}).get("status"),
-        "repoRoot": str(root),
-        "uiIrFile": str(paths["ir"]),
-        "contextFile": str(paths["context"]),
+        "repoRoot": "<project-root>",
+        "uiIrFile": paths["ir"].name,
+        "contextFile": paths["context"].name,
         "screens": [{"id": item.get("id"), "name": item.get("name"), "platform": item.get("platform")} for item in ir.get("screens", [])],
         "findingCount": len(ir.get("review", {}).get("audit", {}).get("findings", [])),
         "setupRequired": setup_required,
@@ -72,6 +74,8 @@ def scoped_payload(
     screen_ids: list[str],
     finding_ids: list[str],
     max_tokens: int,
+    provenance_mode: str = "summary",
+    if_none_match: str | None = None,
 ) -> dict[str, Any]:
     root = _root(repo, default_repo)
     ir_path, ir = _ir(root, ui_ir_file)
@@ -81,6 +85,8 @@ def scoped_payload(
         finding_ids=finding_ids,
         token_budget=max_tokens,
         ui_ir_file=str(ir_path),
+        provenance_mode=provenance_mode,
+        if_none_match=if_none_match,
     )
 
 
@@ -105,7 +111,7 @@ def configure_detail(repo: str | None, default_repo: Path, detail: str) -> dict[
     configuration = result.get("configuration", {})
     return {
         "status": result.get("status"),
-        "repoRoot": result.get("repoRoot"),
+        "repoRoot": "<project-root>",
         "setupRequired": bool(configuration.get("setupRequired")),
         "detailLevel": configuration.get("detailLevel"),
         "mockData": configuration.get(uidw.MOCK_DATA_KEY),
@@ -194,9 +200,20 @@ def create_server(default_repo: Path, name: str = "UI Design Workbench") -> Any:
         repo: str = "",
         ui_ir_file: str = "",
         max_tokens: int = 4000,
+        provenance_mode: str = "summary",
+        if_none_match: str = "",
     ) -> dict[str, Any]:
-        """Read complete UI evidence only for named screens/findings."""
-        return scoped_payload(repo or None, default_repo, ui_ir_file or None, screen_ids, finding_ids, max_tokens)
+        """Read bounded UI structure; fetch full evidence only when explicitly requested."""
+        return scoped_payload(
+            repo or None,
+            default_repo,
+            ui_ir_file or None,
+            screen_ids,
+            finding_ids,
+            max_tokens,
+            provenance_mode,
+            if_none_match or None,
+        )
 
     @server.tool()
     def ui_prepare_job(

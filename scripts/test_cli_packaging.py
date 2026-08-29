@@ -241,7 +241,8 @@ class CliPackagingTests(unittest.TestCase):
     def test_skill_is_thin_and_cli_first(self) -> None:
         skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
         self.assertLess(len(skill.splitlines()), 120)
-        self.assertIn("uidw --repo <repo> context --json", skill)
+        self.assertIn("uidw --repo <repo> scope --budget 4000", skill)
+        self.assertIn("scopeHash", skill)
         self.assertIn("The CLI, not the skill prompt, owns scanning", skill)
         self.assertIn("ui-ir.patch.json", skill)
         self.assertIn("metadata:", skill)

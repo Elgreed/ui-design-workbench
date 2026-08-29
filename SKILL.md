@@ -14,11 +14,13 @@ Use UIDW as a deterministic local utility. The CLI, not the skill prompt, owns s
 Prefer MCP tools `ui_project` then `ui_scope` when the local UIDW MCP is configured. Otherwise use the complete CLI fallback:
 
 ```text
-uidw --repo <repo> context --json
-uidw --repo <repo> scope --ir <ui-ir.json> --screen <id> --budget 4000
+uidw --repo <repo> scope --budget 4000
+uidw --repo <repo> scope --screen <id> --budget 4000
 ```
 
-If `uidw` is unavailable, run `python <skill-dir>/scripts/uidw.py ...`. Reuse a clean cache. Never paste or read the complete `ui-ir.json` when a scoped context can answer the task. Request another screen/finding scope only when needed.
+The first command initializes or reuses the cache and writes a compact catalog; the second writes the selected screen context. Scope provenance is compact by default. Use `ui_fidelity` or `uidw fidelity explain <node-id>` only for nodes that need full source evidence. Reuse the returned `scopeHash` through `if_none_match` or `--if-none-match` before requesting the same scope again.
+
+If `uidw` is unavailable, run `python <skill-dir>/scripts/uidw.py ...`. Reuse a clean cache. Never paste or read the complete `ui-ir.json` when a scoped context can answer the task. Request another screen/finding scope only when needed. If a scope reports `over-budget`, narrow it or explicitly raise the budget; no partial node tree was returned.
 
 If first-use context says `setupRequired`, ask only for `low`, `medium`, or `high` using its short descriptions. Mock-data depth follows that choice. Do not recommend a level. Optional `uiMode` remains off until explicitly enabled.
 

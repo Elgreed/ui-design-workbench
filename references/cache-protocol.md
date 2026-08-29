@@ -34,6 +34,8 @@ uidw --repo <repo> status --json
 uidw --repo <repo> sync
 uidw --repo <repo> context --screen <screen-id> --json
 uidw --repo <repo> context --screen <screen-id> --budget 4000 --format markdown
+uidw --repo <repo> scope --budget 4000
+uidw --repo <repo> scope --screen <screen-id> --budget 4000
 uidw --repo <repo> map --output <docs-or-artifact-dir>/ui-graph.json
 uidw --repo <repo> diff
 uidw --repo <repo> workbench --output-dir <artifact-dir>
@@ -59,3 +61,5 @@ Interactive `init` asks only for detail level and does not recommend or preselec
 UI guidance is not asked during setup and remains off unless explicitly enabled. `init --ui-mode` and `init --no-ui-mode` make automation deterministic. Later use `ui-mode --enable`, `ui-mode --disable`, or `config set ui-mode on|off`. Enabling guidance changes agent behavior only for UI-related tasks and does not imply review, redesign, preview generation, or source-edit permission.
 
 Mock data follows detail level automatically: `low` uses `minimal`, `medium` uses `representative`, and `high` uses `exhaustive`. This derived change refreshes model context but never causes another repository source scan by itself. Preserve existing `scenarioFixtures` and `screen.scenarios` for unaffected screen IDs during incremental sync; regenerate only fixtures whose source dependencies changed.
+
+Use `scope` rather than JSON `context --screen` for agent prompts. It includes only referenced tokens and theme overrides, summarizes property provenance, enforces the requested budget without returning a partial tree, and supports `scopeHash` reuse. The older `context` command remains a human-readable cache summary and compatibility surface.

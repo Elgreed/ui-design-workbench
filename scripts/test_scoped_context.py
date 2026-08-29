@@ -21,7 +21,22 @@ def sample_ir() -> dict:
         ],
         "nodes": {
             "home-root": {"type": "container", "children": ["home-title"], "style": {"background": "$colors.surface"}},
-            "home-title": {"type": "text", "text": "Home", "source": {"file": "Home.tsx"}},
+            "home-title": {
+                "type": "text",
+                "text": "Home",
+                "source": {"file": "Home.tsx", "line": 2},
+                "provenance": {
+                    "text": {
+                        "id": "evidence-home-text",
+                        "kind": "source",
+                        "file": "Home.tsx",
+                        "line": 2,
+                        "expression": "<h1>Home</h1>",
+                        "adapter": "react-jsx",
+                        "confidence": "exact",
+                    }
+                },
+            },
             "settings-root": {"type": "container", "children": ["settings-title"]},
             "settings-title": {"type": "text", "text": "Settings", "source": {"file": "Settings.tsx"}},
         },
@@ -45,7 +60,32 @@ class ScopedContextTests(unittest.TestCase):
         self.assertIn("surface", context["tokens"]["colors"])
         self.assertIn("base", context["tokens"]["colors"])
         self.assertNotIn("unused", context["tokens"]["colors"])
+        self.assertNotIn("provenance", context["nodes"]["home-title"])
+        self.assertEqual(context["nodes"]["home-title"]["provenanceProperties"], ["text"])
         self.assertFalse(context["contextBudget"]["structuralTruncation"])
+
+    def test_full_provenance_is_explicit_only(self) -> None:
+        context = build_scoped_context(sample_ir(), screen_ids=["home"], token_budget=4000, provenance_mode="full")
+        self.assertEqual(context["nodes"]["home-title"]["provenance"]["text"]["expression"], "<h1>Home</h1>")
+
+    def test_strict_budget_returns_no_partial_tree(self) -> None:
+        context = build_scoped_context(sample_ir(), screen_ids=["home"], token_budget=256)
+        self.assertEqual(context["status"], "over-budget")
+        self.assertNotIn("nodes", context)
+        self.assertFalse(context["contextBudget"]["structuralTruncation"])
+        self.assertLessEqual(context["contextBudget"]["returnedTokens"], 256)
+
+    def test_matching_scope_hash_returns_not_modified(self) -> None:
+        first = build_scoped_context(sample_ir(), screen_ids=["home"], token_budget=2000)
+        repeated = build_scoped_context(
+            sample_ir(),
+            screen_ids=["home"],
+            token_budget=2000,
+            if_none_match=first["scopeHash"],
+        )
+        self.assertEqual(repeated["status"], "not-modified")
+        self.assertEqual(repeated["scopeHash"], first["scopeHash"])
+        self.assertNotIn("nodes", repeated)
 
     def test_empty_scope_returns_catalog_without_nodes(self) -> None:
         context = build_scoped_context(sample_ir(), token_budget=1000)

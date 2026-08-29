@@ -1123,7 +1123,7 @@ def compact_context(
             priority_files.append(file)
     return {
         "version": 1,
-        "repoRoot": str(root),
+        "repoRoot": "<project-root>",
         "cacheStatus": report.get("status"),
         "syncedAt": report.get("syncedAt"),
         "detectedPlatforms": inventory.get("detectedPlatforms", []),
@@ -1471,23 +1471,15 @@ def write_screen_context(paths: dict[str, Path], screen_query: str) -> Path:
     ), None)
     if not screen:
         raise ValueError(f"Unknown screen: {screen_query}")
-    nodes = ir.get("nodes", {})
-    selected_nodes: dict[str, Any] = {}
-
-    def visit(node_id: str) -> None:
-        if node_id in selected_nodes or node_id not in nodes:
-            return
-        node = nodes[node_id]
-        selected_nodes[node_id] = node
-        for child in node.get("children", []):
-            visit(str(child))
-
-    visit(str(screen.get("root", "")))
-    source_files = {
-        str(item.get("source", {}).get("file"))
-        for item in [screen, *selected_nodes.values()]
-        if item.get("source", {}).get("file")
-    }
+    scoped = build_scoped_context(
+        ir,
+        screen_ids=[str(screen.get("id"))],
+        token_budget=1_000_000,
+        ui_ir_file=str(paths["ir"]),
+        provenance_mode="summary",
+        strict_budget=False,
+    )
+    selected_nodes = scoped.get("nodes", {})
     component_refs = sorted({
         str(item.get("componentRef"))
         for item in selected_nodes.values()
@@ -1495,16 +1487,18 @@ def write_screen_context(paths: dict[str, Path], screen_query: str) -> Path:
     })
     payload = {
         "version": 1,
-        "repoRoot": base.get("repoRoot"),
+        "repoRoot": "<project-root>",
         "cacheStatus": base.get("cacheStatus"),
         "screen": screen,
         "nodes": selected_nodes,
-        "sourceFiles": sorted(source_files),
+        "sourceFiles": scoped.get("sourceFiles", []),
         "componentRefs": component_refs,
         "platforms": ir.get("platforms", []),
         "design": ir.get("design", {}),
-        "tokens": ir.get("tokens", {}),
-        "themes": ir.get("themes", {}),
+        "tokens": scoped.get("tokens", {}),
+        "themes": scoped.get("themes", {}),
+        "evidence": scoped.get("evidence", {}),
+        "scopeHash": scoped.get("scopeHash"),
         "warnings": base.get("warnings", []),
         "configuration": base.get("configuration", configuration_context(load_config(paths["config"]))),
         UI_MODE_KEY: base.get(UI_MODE_KEY, {"enabled": False, "default": "off"}),
@@ -1524,6 +1518,28 @@ def trim_context_to_budget(payload: dict[str, Any], token_budget: int) -> dict[s
     def size() -> int:
         return len(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
 
+    initial_size = size()
+    if result.get("screen") and initial_size > limit:
+        screen = result.get("screen", {}) if isinstance(result.get("screen"), dict) else {}
+        response = {
+            "version": 1,
+            "status": "over-budget",
+            "screen": {key: screen.get(key) for key in ("id", "name", "platform") if screen.get(key) is not None},
+            "scopeHash": result.get("scopeHash"),
+            "sourceFileCount": len(result.get("sourceFiles", [])),
+            "evidence": result.get("evidence", {}),
+            "next": "Use uidw scope with a narrower selection or a larger explicit budget; no partial node tree was returned.",
+            "contextBudget": {
+                "requestedTokens": max(256, token_budget),
+                "estimatedTokens": max(1, (initial_size + 3) // 4),
+                "withinBudget": False,
+                "structuralTruncation": False,
+                "truncated": False,
+            },
+        }
+        response["contextBudget"]["returnedTokens"] = max(1, (len(json.dumps(response, ensure_ascii=False, separators=(",", ":"))) + 3) // 4)
+        return response
+
     for key in ("components", "navigationTargets", "routes", "tokenFiles", "screens", "prioritySourceFiles", "nodes"):
         value = result.get(key)
         while size() > limit and isinstance(value, list) and len(value) > 1:
@@ -1541,7 +1557,7 @@ def trim_context_to_budget(payload: dict[str, Any], token_budget: int) -> dict[s
     result["contextBudget"] = {
         "requestedTokens": token_budget,
         "estimatedTokens": max(1, size() // 4),
-        "truncated": size() > limit or size() < len(json.dumps(payload, ensure_ascii=False, separators=(",", ":"))),
+        "truncated": size() > limit or size() < initial_size,
     }
     return result
 
@@ -1868,9 +1884,19 @@ def prepare_agent_job(
         ir,
         screen_ids=screen_ids,
         finding_ids=selected_ids,
-        token_budget=5000 if selected_ids else 1800,
+        token_budget=5000 if selected_ids else 4000,
         ui_ir_file=str(ir_path.resolve()),
     )
+    if scoped.get("status") == "over-budget":
+        return {
+            "version": 1,
+            "status": "blocked",
+            "kind": kind,
+            "reason": "context-over-budget",
+            "contextBudget": scoped.get("contextBudget", {}),
+            "scopeHash": scoped.get("scopeHash"),
+            "next": scoped.get("next"),
+        }
     write_scoped_json(context_file, scoped)
     write_scoped_json(patch_file, patch_template(ir, str(ir_path.resolve()), str(context_file)))
     allowed_writes = source_targets if source_change_allowed else ["ui-ir.patch.json", "ui-ir.proposed.json", "ui-preview.html", "*.report.json"]
@@ -2498,6 +2524,8 @@ def parse_args() -> argparse.Namespace:
     scope_parser.add_argument("--screen", action="append", default=[], help="Screen id or name; repeat for a small multi-screen scope")
     scope_parser.add_argument("--finding", action="append", default=[], help="Stable finding id or displayed number; repeat as needed")
     scope_parser.add_argument("--budget", type=int, default=4000, help="Context token budget; structure is never cut to fit")
+    scope_parser.add_argument("--provenance", choices=("summary", "full"), default="summary", help="Return compact property names or full source evidence")
+    scope_parser.add_argument("--if-none-match", help="Return a compact not-modified response when the scope hash matches")
     scope_parser.add_argument("--output", type=Path, help="Output path; defaults beside the IR")
     patch_parser = subparsers.add_parser("patch", help=advanced_help)
     patch_parser.add_argument("action", choices=("template", "validate", "apply"))
@@ -2666,6 +2694,8 @@ def main() -> int:
             context_path = write_context_variant(paths, args.screen, args.budget, args.changed_only, args.format)
             result = {**result, "contextFile": str(context_path)}
         elif args.command == "scope":
+            if args.ir is None:
+                _, paths, _ = ensure_initialized(root)
             ir_path, ir = load_ir_argument(paths, args.ir)
             output = (args.output or ir_path.with_name("ui-agent-context.json")).resolve()
             payload = build_scoped_context(
@@ -2674,13 +2704,17 @@ def main() -> int:
                 finding_ids=args.finding,
                 token_budget=args.budget,
                 ui_ir_file=str(ir_path),
+                provenance_mode=args.provenance,
+                if_none_match=args.if_none_match,
             )
-            write_scoped_json(output, payload)
+            if payload.get("status") != "not-modified":
+                write_scoped_json(output, payload)
             result = {
                 "version": 1,
-                "status": "prepared",
+                "status": payload.get("status", "ready"),
                 "contextFile": str(output),
                 "scope": payload.get("scope", {}),
+                "scopeHash": payload.get("scopeHash"),
                 "contextBudget": payload.get("contextBudget", {}),
             }
         elif args.command == "patch":

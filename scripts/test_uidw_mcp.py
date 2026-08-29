@@ -36,6 +36,8 @@ class UidwMcpTests(unittest.TestCase):
         self.assertIn("explicit implementation request", uidw_mcp.SERVER_INSTRUCTIONS)
         self.assertIn("ui_configure", uidw_mcp.SERVER_INSTRUCTIONS)
         self.assertIn("ui_native_status", uidw_mcp.SERVER_INSTRUCTIONS)
+        self.assertIn("scopeHash", uidw_mcp.SERVER_INSTRUCTIONS)
+        self.assertIn("ui_fidelity", uidw_mcp.SERVER_INSTRUCTIONS)
         self.assertIn("never describe source projection as a native render", uidw_mcp.SERVER_INSTRUCTIONS)
 
     def test_project_summary_exposes_required_setup_instead_of_routing_to_scope(self) -> None:
@@ -55,6 +57,7 @@ class UidwMcpTests(unittest.TestCase):
 
         self.assertTrue(result["setupRequired"])
         self.assertEqual(result["detailChoices"], ["low", "medium", "high"])
+        self.assertEqual(result["repoRoot"], "<project-root>")
         self.assertIn("ui_configure", result["next"])
 
     def test_build_preview_returns_needs_setup_without_rendering(self) -> None:

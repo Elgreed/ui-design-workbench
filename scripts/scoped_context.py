@@ -16,6 +16,7 @@ CONTEXT_TYPE = "ui-design-workbench-scoped-context"
 PATCH_TYPE = "ui-design-workbench-ir-patch"
 FORMAT_VERSION = 1
 TOKEN_REF = re.compile(r"\$([A-Za-z0-9_.-]+)")
+PROVENANCE_MODES = {"summary", "full"}
 
 
 def _compact(value: Any) -> str:
@@ -256,6 +257,56 @@ def _compact_finding(item: dict[str, Any]) -> dict[str, Any]:
     }
     return {key: copy.deepcopy(value) for key, value in item.items() if key in keep}
 
+def _model_nodes(nodes: dict[str, Any], provenance_mode: str) -> dict[str, Any]:
+    if provenance_mode not in PROVENANCE_MODES:
+        raise ValueError("provenance_mode must be summary or full")
+    result = copy.deepcopy(nodes)
+    if provenance_mode == "full":
+        return result
+    for node in result.values():
+        if not isinstance(node, dict):
+            continue
+        provenance = node.pop("provenance", {})
+        if isinstance(provenance, dict) and provenance:
+            node["provenanceProperties"] = sorted(map(str, provenance))
+    return result
+
+def _scope_hash(payload: dict[str, Any]) -> str:
+    return "sha256:" + hashlib.sha256(_compact(payload).encode("utf-8")).hexdigest()
+
+def _budget_response(
+    payload: dict[str, Any],
+    *,
+    requested: int,
+    estimated: int,
+    scope_hash: str,
+) -> dict[str, Any]:
+    scope = payload.get("scope", {}) if isinstance(payload.get("scope"), dict) else {}
+    response: dict[str, Any] = {
+        "type": CONTEXT_TYPE,
+        "version": FORMAT_VERSION,
+        "status": "over-budget",
+        "project": payload.get("project", {}),
+        "scope": {
+            "screenIds": scope.get("screenIds", []),
+            "findingIds": scope.get("findingIds", []),
+            "nodeCount": len(scope.get("nodeIds", [])),
+        },
+        "scopeHash": scope_hash,
+        "sourceFileCount": len(payload.get("sourceFiles", [])),
+        "evidence": payload.get("evidence", {}),
+        "contextBudget": {
+            "requestedTokens": requested,
+            "estimatedTokens": estimated,
+            "withinBudget": False,
+            "structuralTruncation": False,
+            "recommendation": "Request fewer screens/findings, raise max_tokens, or fetch detailed evidence only through ui_fidelity.",
+        },
+        "next": "Narrow the scope or increase the explicit token budget; no partial node tree was returned.",
+    }
+    response["contextBudget"]["returnedTokens"] = estimate_tokens(response)
+    return response
+
 
 def _scope_catalog(ir: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -277,6 +328,9 @@ def build_scoped_context(
     finding_ids: list[str] | None = None,
     token_budget: int = 4000,
     ui_ir_file: str | None = None,
+    provenance_mode: str = "summary",
+    if_none_match: str | None = None,
+    strict_budget: bool = True,
 ) -> dict[str, Any]:
     """Build a structurally complete scope. It never cuts a selected node subtree."""
     screen_ids = screen_ids or []
@@ -286,15 +340,17 @@ def build_scoped_context(
     screens = _resolve_screens(ir, list(dict.fromkeys([*screen_ids, *inferred_screens])))
     node_ids = _node_ids_for_scope(ir, screens, findings)
     all_nodes = ir.get("nodes", {}) if isinstance(ir.get("nodes"), dict) else {}
-    nodes = {node_id: copy.deepcopy(all_nodes[node_id]) for node_id in all_nodes if node_id in node_ids}
+    raw_nodes = {node_id: copy.deepcopy(all_nodes[node_id]) for node_id in all_nodes if node_id in node_ids}
+    nodes = _model_nodes(raw_nodes, provenance_mode)
     review = ir.get("review", {}) if isinstance(ir.get("review"), dict) else {}
     project = ir.get("project", {}) if isinstance(ir.get("project"), dict) else {}
     payload: dict[str, Any] = {
         "type": CONTEXT_TYPE,
         "version": FORMAT_VERSION,
-        "project": {key: project.get(key) for key in ("name", "root") if project.get(key) is not None},
+        "status": "ready",
+        "project": {"name": project.get("name")} if project.get("name") is not None else {},
         "target": {
-            "uiIrFile": ui_ir_file,
+            "uiIrFile": Path(ui_ir_file).name if ui_ir_file else None,
             "baselineHash": review.get("baselineHash"),
             "reviewRevision": review.get("revision"),
             "baselineVersion": review.get("baselineVersion"),
@@ -308,13 +364,18 @@ def build_scoped_context(
         "nodes": nodes,
         "findings": [_compact_finding(item) for item in findings],
         "versions": _relevant_versions(ir, node_ids, {str(item.get("id")) for item in findings}),
-        "tokens": _relevant_tokens(ir, nodes),
-        "themes": _relevant_themes(ir, nodes, node_ids),
+        "tokens": _relevant_tokens(ir, raw_nodes),
+        "themes": _relevant_themes(ir, raw_nodes, node_ids),
         "scenarioFixtures": _relevant_fixtures(ir, screens),
         "navigation": _relevant_navigation(ir, {str(item.get("id")) for item in screens}),
-        "components": _relevant_components(ir, nodes),
+        "components": _relevant_components(ir, raw_nodes),
         "platforms": copy.deepcopy(ir.get("platforms", [])),
         "sourceFiles": _source_files([*screens, *nodes.values(), *findings]),
+        "evidence": {
+            "mode": provenance_mode,
+            "detailTool": "ui_fidelity",
+            "instruction": "Use ui_fidelity with a node ID only when full property evidence is needed.",
+        },
         "patchContract": {
             "type": PATCH_TYPE,
             "version": FORMAT_VERSION,
@@ -326,7 +387,27 @@ def build_scoped_context(
         payload["catalog"] = _scope_catalog(ir)
         payload["next"] = "Request one screen or a small finding set; do not read the full ui-ir.json."
     requested = max(256, int(token_budget))
+    scope_hash = _scope_hash(payload)
+    payload["scopeHash"] = scope_hash
     estimated = estimate_tokens(payload)
+    if if_none_match and if_none_match == scope_hash:
+        response: dict[str, Any] = {
+            "type": CONTEXT_TYPE,
+            "version": FORMAT_VERSION,
+            "status": "not-modified",
+            "scopeHash": scope_hash,
+            "scope": payload.get("scope", {}),
+            "next": "Reuse the previously returned scoped context.",
+        }
+        response["contextBudget"] = {
+            "requestedTokens": requested,
+            "estimatedTokens": estimated,
+            "returnedTokens": estimate_tokens(response),
+            "withinBudget": True,
+            "structuralTruncation": False,
+            "recommendation": None,
+        }
+        return response
     payload["contextBudget"] = {
         "requestedTokens": requested,
         "estimatedTokens": estimated,
@@ -334,6 +415,12 @@ def build_scoped_context(
         "structuralTruncation": False,
         "recommendation": None if estimated <= requested else "Narrow screenIds/findingIds; selected structure was preserved intact.",
     }
+    estimated = estimate_tokens(payload)
+    payload["contextBudget"]["estimatedTokens"] = estimated
+    payload["contextBudget"]["withinBudget"] = estimated <= requested
+    payload["contextBudget"]["recommendation"] = None if estimated <= requested else "Narrow screenIds/findingIds; selected structure was preserved intact."
+    if strict_budget and estimated > requested:
+        return _budget_response(payload, requested=requested, estimated=estimated, scope_hash=scope_hash)
     return payload
 
 
