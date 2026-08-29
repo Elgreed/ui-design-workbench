@@ -18,6 +18,13 @@ uidw install-skill codex
 
 The wheel contains the Agent Skill, references, schemas, and runtime fallback scripts. `uidw install-skill` copies that payload into the selected agent's discovery directory, so users do not need a repository checkout.
 
+## Changelog policy
+
+- Record every user-visible feature, fix, or behavior change under `Unreleased` in the same commit.
+- A commit that changes the version must also move the relevant entries into a dated `X.Y.Z` section in `CHANGELOG.md`.
+- Keep `pyproject.toml`, `CLI_VERSION` in `scripts/uidw.py`, both README files, and the changelog release heading on the same version.
+- Never create or push a release tag without its dated changelog section.
+
 ## One-time PyPI setup
 
 The workflow at `.github/workflows/release.yml` publishes through PyPI Trusted Publishing and does not use a stored API token. Configure a pending publisher in PyPI with:

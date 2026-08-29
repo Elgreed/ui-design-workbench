@@ -6,6 +6,22 @@ Not every historical version was published as a GitHub Release or package artifa
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-29
+
+### Added
+
+- An official-documentation-first component inventory for Android, iOS, macOS, Windows, Flutter, and Web, covering 178 concepts and 593 framework bindings.
+- Calibrated HTML renderer recipes for recognized platform controls, with catalog validation and coverage reported by `uidw fidelity capabilities`.
+
+### Changed
+
+- HTML projection now uses platform catalog geometry only as a fallback; explicit project layout, theme, token, style, and accessibility evidence continues to take precedence.
+- Python distributions now include the component catalog, inventory, and their runtime resolver.
+
+### Fixed
+
+- GitHub Release creation now receives the repository identity explicitly in tag-triggered jobs.
+
 ## [0.5.0] - 2026-08-29
 
 ### Added

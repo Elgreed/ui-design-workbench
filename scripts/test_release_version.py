@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -33,6 +34,14 @@ class ReleaseVersionTests(unittest.TestCase):
     def test_tag_format_is_strict(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             self.assertIn("vX.Y.Z", validate_release_version(Path(directory), "1.2.3")[0])
+
+    def test_repository_version_is_documented(self) -> None:
+        root = Path(__file__).resolve().parent.parent
+        pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
+        version_match = re.search(r'^version\s*=\s*["\']([^"\']+)["\']', pyproject, re.MULTILINE)
+        self.assertIsNotNone(version_match)
+        version = version_match.group(1)
+        self.assertEqual(validate_release_version(root, f"v{version}"), [])
 
 
 if __name__ == "__main__":
