@@ -142,6 +142,22 @@ class CliPackagingTests(unittest.TestCase):
         self.assertNotIn("==SUPPRESS==", completed.stdout)
         self.assertNotIn("visual-test", completed.stdout)
 
+    def test_fidelity_capabilities_do_not_require_initialized_project(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            completed = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "uidw.py"), "--repo", str(root), "--json", "fidelity", "capabilities"],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=False,
+            )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        payload = json.loads(completed.stdout)
+        families = {family for adapter in payload["adapters"] for family in adapter["platforms"]}
+        self.assertEqual(families, {"android", "ios", "macos", "windows", "flutter", "web"})
+
     def test_task_help_covers_primary_review_and_apply_commands(self) -> None:
         self.assertIn("uidw workbench", help_topic("overview")["text"])
         self.assertIn("uidw review", help_topic("overview")["text"])

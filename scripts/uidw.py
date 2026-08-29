@@ -51,7 +51,7 @@ from scan_ui import (
 
 
 CACHE_VERSION = 8
-CLI_VERSION = "0.4.1"
+CLI_VERSION = "0.5.0"
 CONFIG_VERSION = 5
 STATE_DIR_NAME = ".ui-design-workbench"
 CONFIG_NAME = "config.json"
@@ -2661,7 +2661,7 @@ def main() -> int:
         elif args.command == "visual-test":
             result = visual_test(args.baseline, args.candidate, args.output_dir, args.baseline_geometry, args.candidate_geometry)
         elif args.command == "fidelity":
-            _, ir = load_ir_argument(paths, args.ir)
+            ir = {} if args.action == "capabilities" else load_ir_argument(paths, args.ir)[1]
             result = fidelity_command(ir, args.action, args.identifier, args.output, args.format)
         else:
             result = doctor(root)

@@ -4,7 +4,7 @@ Use these deterministic gates for every final reconstruction, generation, redesi
 
 ## 1. Platform profile
 
-`references/platform-profiles.json` is the machine-readable source for profile IDs, standard-reference prefixes, minimum targets, required interaction states, and cross-platform framework adapters. The validation matrix covers Android, Android TV, iOS, macOS, Windows, and Web. Flutter and React Native require explicit target families; do not use one ambiguous shared profile.
+`references/platform-profiles.json` is the machine-readable source for profile IDs, standard-reference prefixes, minimum targets, required interaction states, and framework adapters. The validation matrix covers Android, iOS, macOS, Windows, Flutter, and Web.
 
 ```powershell
 python <skill-dir>/scripts/validate_platform_profiles.py <review-dir>/ui-ir.json --output <review-dir>/platform-profile-report.json --strict

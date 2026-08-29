@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "profiles": {
     "material3": {
       "family": "android",
@@ -11,7 +11,7 @@
     },
     "apple-hig": {
       "family": "ios",
-      "label": "iOS/iPadOS · Apple HIG",
+      "label": "iOS · Apple HIG",
       "standardRefPrefixes": ["apple.", "project."],
       "minimumTarget": {"width": 44, "height": 44},
       "requiredInteractionStates": ["default", "highlighted", "focused", "disabled"],
@@ -54,20 +54,16 @@
         "https://developer.apple.com/design/human-interface-guidelines/focus-and-selection/"
       ]
     },
-    "android-tv": {
-      "family": "android-tv",
-      "label": "Android TV · TV Material and D-pad navigation",
-      "standardRefPrefixes": ["androidtv.", "tv-material.", "project."],
+    "flutter-adaptive": {
+      "family": "flutter",
+      "label": "Flutter · Material, Cupertino and adaptive layout",
+      "standardRefPrefixes": ["flutter.", "material3.", "cupertino.", "project."],
       "minimumTarget": {"width": 48, "height": 48},
-      "referenceViewport": {"width": 960, "height": 540, "aspectRatio": "16:9"},
-      "safeContentInsets": {"left": 48, "right": 48, "top": 27, "bottom": 27},
-      "requiredInteractionStates": ["default", "focused", "pressed", "selected", "disabled"],
-      "requirements": ["dpad-complete", "single-visible-focus", "focus-restoration", "focus-driven-scrolling", "remote-select", "back-to-root", "ten-foot-readable", "overscan-safe-content", "no-touch-only-actions"],
+      "requiredInteractionStates": ["default", "hovered", "focused", "pressed", "disabled"],
+      "requirements": ["adaptive-layout", "platform-semantics", "scalable-text", "safe-area-insets", "keyboard-complete", "reduced-motion"],
       "referenceUrls": [
-        "https://developer.android.com/design/ui/tv/guides/styles/focus-system",
-        "https://developer.android.com/design/ui/tv/guides/styles/layouts",
-        "https://developer.android.com/training/tv/get-started/navigation",
-        "https://developer.android.com/training/tv/playback/compose"
+        "https://docs.flutter.dev/ui/adaptive-responsive",
+        "https://docs.flutter.dev/ui/accessibility-and-internationalization/accessibility"
       ]
     }
   },
@@ -83,13 +79,6 @@
     "windows-xaml": {"families": ["windows"], "profiles": ["windows-fluent"]},
     "swiftui-macos": {"families": ["macos"], "profiles": ["macos-hig"]},
     "appkit": {"families": ["macos"], "profiles": ["macos-hig"]},
-    "mac-catalyst": {"families": ["macos"], "profiles": ["macos-hig"]},
-    "android-tv-compose": {"families": ["android-tv"], "profiles": ["android-tv"]},
-    "android-tv-views": {"families": ["android-tv"], "profiles": ["android-tv"]},
-    "android-tv-leanback": {"families": ["android-tv"], "profiles": ["android-tv"]},
-    "flutter": {"families": ["android", "ios"], "profiles": ["material3", "apple-hig"], "requiresExplicitTarget": true},
-    "react-native": {"families": ["android", "ios"], "profiles": ["material3", "apple-hig"], "requiresExplicitTarget": true},
-    "react-native-windows": {"families": ["windows"], "profiles": ["windows-fluent"]},
-    "react-native-macos": {"families": ["macos"], "profiles": ["macos-hig"]}
+    "flutter": {"families": ["flutter"], "profiles": ["flutter-adaptive"]}
   }
 }

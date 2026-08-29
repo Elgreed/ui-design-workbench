@@ -303,7 +303,7 @@ def _set_compose(node: dict[str, Any], path: str, value: Any, context: SourceCon
 
 class ComposeAdapter:
     id = "compose"
-    platforms = ("android", "android-tv")
+    platforms = ("android",)
     extensions = (".kt", ".kts")
     maturity = "structural"
     structural_tier = "translated"
@@ -333,7 +333,7 @@ class ComposeAdapter:
     def translate(self, context: SourceContext) -> AdapterResult:
         result = AdapterResult(adapter=self.id)
         catalog = self._catalog(context)
-        platform = "android-tv" if any(value.startswith("android-tv") for value in context.platforms) else "android"
+        platform = "android"
         for match in re.finditer(r"(?:val|const\s+val)\s+(\w+)\s*=\s*(Color\([^\n]+?\)|[^\s]+\.(?:dp|sp))", context.text):
             name, value = match.group(1), match.group(2).strip()
             group = "colors" if value.startswith("Color") else "typography" if value.endswith(".sp") else "spacing"
@@ -361,13 +361,11 @@ class ComposeAdapter:
                 widget, args = call["widget"], call["args"]
                 node_id = f"{screen_id}-{_slug(widget)}-{count}"
                 line = context.text.count("\n", 0, start + call["start"]) + 1
-                native_prefix = "tv-material" if platform == "android-tv" else "material3"
+                native_prefix = "material3"
                 standard = f"{native_prefix}.{widget.lower()}" if widget in {"Scaffold", "Card", "Surface", "Text", "Button", "TextField", "OutlinedTextField", "Icon"} else f"project.{platform}.compose.{widget.lower()}"
                 node: dict[str, Any] = {"type": COMPOSE_TYPES[widget], "component": widget, "layout": {}, "style": {}, "children": [], "source": {"file": context.source, "line": line, "symbol": name}, "confidence": "high", "standardRef": standard, "provenance": {"component": property_evidence(context.source, line, widget, self.id, "exact")}}
-                if standard.startswith(("material3.", "tv-material.")):
+                if standard.startswith("material3."):
                     node["inheritsAppearance"] = True
-                if platform == "android-tv" and node["type"] in {"button", "input", "card"}:
-                    node["states"] = {"default": {}, "focused": {"style": {"outline": "source-focus"}}}
                 literal = re.search(r"(?:text\s*=\s*)?\"([^\"]*)\"", args)
                 if literal and node["type"] in {"text", "button", "input"}:
                     node["text"] = literal.group(1)

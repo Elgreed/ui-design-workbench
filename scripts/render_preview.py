@@ -514,7 +514,7 @@ def fidelity_audit(ir: dict[str, Any]) -> dict[str, Any]:
     if not target_platforms:
         target_platforms = {platform_family(item) for item in ir.get("platforms", [])}
         target_platforms.discard(None)
-    native_platforms = {"android", "android-tv", "ios", "macos"}
+    native_platforms = {"android", "ios", "macos", "windows", "flutter"}
     native_evidence_required = bool(target_platforms & native_platforms)
 
     node_platforms: dict[str, set[str]] = {node_id: set() for node_id in nodes}

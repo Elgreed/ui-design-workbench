@@ -1,6 +1,6 @@
 ---
 name: ui-design-workbench
-description: Reconstruct, review, generate, or redesign repository UI as standards-aware interactive HTML previews; optionally guide ordinary UI implementation with Android, Android TV, Apple, Windows, or Web conventions. Do not use when the user only wants to run the real application.
+description: Reconstruct, review, generate, or redesign repository UI as standards-aware interactive HTML previews; optionally guide ordinary UI implementation for Android, iOS, macOS, Windows, Flutter, or Web. Do not use when the user only wants to run the real application.
 metadata:
   compatibility: "Python 3.10+. MCP is optional; CLI works standalone."
 ---

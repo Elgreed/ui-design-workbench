@@ -4,15 +4,11 @@ Read only the section matching platforms reported by `scan_ui.py`.
 
 ## Web and React
 
-Prioritize route declarations, page/layout files, exported PascalCase components, JSX/TSX, CSS modules, global styles, theme providers, design-token JSON, and public assets. Preserve imported project components instead of flattening them into generic HTML controls. Extract visible strings, prop defaults, variants, and navigation calls. Distinguish React Native through `react-native` imports and `StyleSheet.create`.
+Prioritize route declarations, page/layout files, exported PascalCase components, JSX/TSX, CSS modules, global styles, theme providers, design-token JSON, and public assets. Preserve imported project components instead of flattening them into generic HTML controls. Extract visible strings, prop defaults, variants, and navigation calls.
 
 ## Android Compose
 
 Prioritize `@Composable` functions, `NavHost`/`composable` routes, `MaterialTheme`, `Modifier` chains, preview fixtures, `Row`, `Column`, `Box`, lazy containers, text, images, icons, and project design-system components. Read `res/values`, vector drawables, fonts, and raster resources. Treat custom `Canvas`, subcomposition, and runtime measurement as unsupported until mapped.
-
-## Android TV
-
-Detect TV modules from `android.software.leanback`, `LEANBACK_LAUNCHER`, `androidx.tv.*`, Compose for TV/TV Material dependencies, Leanback fragments, and TV-specific source sets. Prioritize D-pad focus graphs, `FocusRequester`/`focusRestorer`, focus groups, initial focus, selected/focused states, standard Compose Foundation lazy layouts, playback controls, Back behavior, and overscan-safe layout constants. Treat mobile Compose/Material controls inside a TV module as suspect until their focus and remote behavior are mapped. Preserve an existing Leanback or Views implementation; do not silently migrate it to Compose for TV.
 
 ## Android Views
 
@@ -41,5 +37,4 @@ Prioritize `Widget` subclasses, `build`, `MaterialApp`/`CupertinoApp`, `ThemeDat
 - Trace design-system wrappers to their defaults before choosing a renderer variant.
 - Keep alternate themes and responsive variants as explicit preview states.
 - For desktop targets, inventory window sizes, activation, menus, commands, keyboard shortcuts, pointer/keyboard focus, and multiwindow behavior as first-class states.
-- For TV targets, inventory D-pad reachability, initial/restored focus, directional order, remote Select/Back, focus-driven scrolling, and 16:9 safe content as first-class behavior.
 - If a platform uses generated code, prefer authored source and configuration over generated output.

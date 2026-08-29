@@ -31,34 +31,14 @@ Official sources:
 - [Adaptive Android guidance](https://developer.android.com/develop/adaptive-apps/guides/adaptive-dos-and-donts)
 - [Android accessibility and 48 dp targets](https://developer.android.com/design/ui/mobile/guides/foundations/accessibility)
 
-## Android TV
-
-Default profile ID: `android-tv`.
-
-- Treat TV as a distinct D-pad-first platform, not as a stretched Android phone or tablet. Prefer Compose for TV and TV Material components when they are already compatible with the project; preserve Leanback or existing Views stacks instead of silently migrating dependencies.
-- A single, unmistakable focused element is mandatory. Model `default`, `focused`, `pressed`, `selected`, and `disabled` separately; focus must remain visible on every background and must not rely on color alone.
-- Every actionable element must be reachable with Up, Down, Left, Right, Select, and Back. Test initial focus, directional order, focus restoration after dialogs/navigation, focus-driven scrolling, repeated D-pad presses, and Back until the app root without loops.
-- Design for ten-foot viewing, a 16:9 surface, short readable text, uncluttered hierarchy, and clear spatial grouping. Do not hide essential actions behind hover, touch gestures, long-press, or pointer-only interactions.
-- Use a 960×540 mdpi reference canvas for layout reasoning. Keep primary content inside the documented overscan-safe region (normally 48 dp left/right and 27 dp top/bottom); backgrounds may extend edge to edge.
-- Keep the Android 48 dp accessibility baseline for custom actionable surfaces, while treating directional reachability and visible focus as the primary TV interaction gate. Large cards and playback controls normally need more space for viewing distance.
-- Prefer standard Compose Foundation lazy layouts when the installed Compose version provides TV focus-driven scrolling. Do not mix mobile Material and TV Material themes without an explicit, tested project decision.
-
-Official sources:
-
-- [Android TV focus system](https://developer.android.com/design/ui/tv/guides/styles/focus-system)
-- [Android TV layout guidance](https://developer.android.com/design/ui/tv/guides/styles/layouts)
-- [Android TV navigation](https://developer.android.com/training/tv/get-started/navigation)
-- [Compose for TV](https://developer.android.com/training/tv/playback/compose)
-- [Scrollable TV layouts](https://developer.android.com/training/tv/playback/compose/lists)
-
-## iOS and iPadOS
+## iOS
 
 Default profile ID: `apple-hig`.
 
 - Prefer native SwiftUI/UIKit controls, navigation, sheets, alerts, menus, pickers, toolbars, tab bars, system typography, semantic colors, materials, and standard gestures.
 - A tab bar navigates between top-level areas; actions belong in a toolbar or content. Preserve navigation state within tabs.
-- Respect safe areas, system margins, Dynamic Type, localization expansion, RTL, orientation, multitasking, resizable iPad windows, and input methods beyond touch.
-- Use a 44×44 pt default control target for iOS/iPadOS. Do not shrink to the documented minimum merely to make a dense layout fit.
+- Respect safe areas, system margins, Dynamic Type, localization expansion, RTL, orientation, and input methods beyond touch.
+- Use a 44×44 pt default control target for iOS. Do not shrink it merely to make a dense layout fit.
 - Do not simulate Material ripples, FABs, Android back behavior, or Android component geometry unless the product explicitly chooses a cross-platform custom system.
 - Use current system materials, including newer visual treatments, only when the deployment target and existing implementation support them. Do not draw a speculative imitation in HTML.
 
@@ -130,15 +110,20 @@ Official sources:
 - [Windows text scaling](https://learn.microsoft.com/windows/apps/develop/input/text-scaling)
 - [Windows title bar guidance](https://learn.microsoft.com/windows/apps/develop/title-bar)
 
-## Cross-platform frameworks
+## Flutter
 
-React Native, Flutter, .NET MAUI, Kotlin Multiplatform, and shared web/native products need platform adapters. Share brand tokens, content hierarchy, domain state, and task flow; vary navigation containers, control geometry, gestures, system surfaces, typography behavior, input modality, window behavior, and accessibility semantics by target platform. Android TV must not inherit a touch-only Android rendering, and Windows/macOS desktop targets must not inherit phone navigation merely because business code is shared. A single identical rendering is acceptable only when the repository clearly implements an intentional custom system and the deviation is recorded.
+Default profile ID: `flutter-adaptive`.
+
+- Preserve the project's existing Material, Cupertino, or custom widget system; do not replace it merely to make the HTML projection easier.
+- Resolve adaptive behavior, safe areas, scalable text, localization, platform semantics, keyboard/focus behavior, and responsive breakpoints explicitly.
+- Treat custom painters, runtime layout delegates, platform channels, and builder output without deterministic fixtures as unsupported evidence gaps.
+- The HTML output is a structural projection. Native Flutter golden/device evidence is required before calling it visually verified.
 
 ## IR evidence
 
 For generated or redesigned interactive nodes, use:
 
-- `standardRef`: one reference such as `material3.Button`, `androidtv.Card`, `apple.Button`, `macos.Toolbar`, `windows.NavigationView`, `html.button`, or `aria.dialog`;
+- `standardRef`: one reference such as `material3.Button`, `apple.Button`, `macos.Toolbar`, `windows.NavigationView`, `flutter.Text`, `html.button`, or `aria.dialog`;
 - `standardRefs`: per-platform references for shared nodes;
 - `decisionId`: an ID from `design.decisions` when a custom component is necessary;
 - `semantics.role`, `semantics.label`, and `semantics.targetSize`.

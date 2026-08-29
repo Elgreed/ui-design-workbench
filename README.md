@@ -26,7 +26,7 @@ UI Design Workbench adds a deterministic layer between source code and AI decisi
 | The AI may mix reconstruction with unsolicited redesign advice | Projection checks and UI/UX review are separate explicit operations |
 | Production UI files may change before visual approval | Proposals live in the workbench first; project edits require a separate apply authorization |
 | Before/After and comments are spread across chat and screenshots | Versions, comparisons, findings, and anchored comments stay in one artifact |
-| Platform conventions depend on the current prompt | Optional profiles provide consistent Android, Android TV, Apple, Windows, and Web guidance |
+| Platform conventions depend on the current prompt | Optional profiles provide consistent Android, iOS, macOS, Windows, Flutter, and Web guidance |
 
 Use it when you need to understand an unfamiliar UI codebase, inspect all screens without running it, create an interactive design artifact, compare a redesign safely, or perform a deliberate platform-aware review. It is not a replacement for final testing in the real application.
 
@@ -50,7 +50,7 @@ Use it when you need to understand an unfamiliar UI codebase, inspect all screen
 - Shared-canvas zoom, middle-button panning, resizable panels, inspection, and anchored comments.
 - Optional UI/UX review with stable numbered findings and Before/After proposals.
 - Property-level source provenance, strict IR validation, token resolution, and immutable baselines.
-- Platform profiles for Android, Android TV, iOS/iPadOS, macOS, Windows, Web, Flutter, and React Native.
+- Platform profiles for Android, iOS, macOS, Windows, Flutter, and Web.
 - Incremental source cache to avoid repeated repository-wide scans and reduce token use.
 - Russian and English workbench chrome.
 
@@ -236,7 +236,7 @@ uidw fidelity report --ir <artifacts>/ui-ir.json
 uidw fidelity explain <node-id-or-evidence-id> --ir <artifacts>/ui-ir.json
 ```
 
-Built-in adapters cover HTML/CSS, React/JSX, Vue, Svelte, Jetpack Compose, Android Views XML, SwiftUI, Storyboard/XIB, WinUI/WPF XAML, Flutter, and React Native. Unsupported syntax is reported instead of being replaced with invented UI.
+Built-in adapters cover HTML/CSS, React/JSX, Vue, Svelte, Jetpack Compose, Android Views XML, SwiftUI, Storyboard/XIB, WinUI/WPF XAML, and Flutter. Unsupported syntax is reported instead of being replaced with invented UI.
 
 Android and Apple source adapters are structural translators, not native renderers. Check the available native path without starting a build or simulator:
 
@@ -318,4 +318,4 @@ fixtures/golden/            Adapter and workbench-shell regression fixtures
 
 ## Version
 
-Current CLI version: `0.4.1`.
+Current CLI version: `0.5.0`.
