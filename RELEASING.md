@@ -40,8 +40,8 @@ Create the GitHub `pypi` environment if release approval should be required. The
 4. Commit the release state, create tag `vX.Y.Z`, and push the tag.
 
 ```sh
-git tag v0.3.5
-git push origin v0.3.5
+git tag v0.5.0
+git push origin v0.5.0
 ```
 
 The tag starts one GitHub Actions workflow that:
@@ -60,13 +60,13 @@ PyPI versions cannot be replaced. If a published artifact is wrong, fix it and r
 python -m unittest discover -s scripts -p "test_*.py"
 python -m build
 python -m twine check dist/*
-python scripts/check_release_version.py v0.3.5
+python scripts/check_release_version.py v0.5.0
 ```
 
 Install the built wheel into a clean `pipx` environment and verify:
 
 ```sh
-pipx install dist/ui_design_workbench_cli-0.3.5-py3-none-any.whl
+pipx install dist/ui_design_workbench_cli-0.5.0-py3-none-any.whl
 uidw --version
 uidw install-skill codex
 uidw doctor

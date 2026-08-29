@@ -6,7 +6,7 @@ Not every historical version was published as a GitHub Release or package artifa
 
 ## [Unreleased]
 
-## [0.3.5] - 2026-08-29
+## [0.5.0] - 2026-08-29
 
 ### Added
 
@@ -14,6 +14,8 @@ Not every historical version was published as a GitHub Release or package artifa
 - Sparse, guarded review-artifact updates with `uidw patch`.
 - Optional local stdio MCP server through `uidw-mcp` and `uidw mcp`.
 - Android XML screen/component classification, static include expansion, resources, qualifier variants, and explicit unsupported evidence.
+- Android and Apple resource projection for layouts, assets, localization, tokens, and supported source modifiers.
+- Read-only native render discovery for Android and Apple through `uidw native status` and `ui_native_status`.
 - Clone-free Agent Skill installation with `uidw install-skill`.
 - Tag-driven GitHub Actions releases with tests, package builds, PyPI Trusted Publishing, checksums, and GitHub Release assets.
 
@@ -24,6 +26,7 @@ Not every historical version was published as a GitHub Release or package artifa
 - Agent guidance now routes through compact CLI or MCP context instead of loading the complete IR.
 - README files were rewritten around installation, quick start, safety boundaries, and release channels.
 - Wheels now contain the complete Agent Skill payload and runtime fallback resources.
+- Native capture state is isolated from baseline IR and invalidated when matching source changes.
 
 ## [0.3.4] - 2026-08-28
 

@@ -7,6 +7,7 @@ import html.parser
 import re
 from typing import Any
 
+from android_resource_resolver import AndroidResourceCatalog, material_icon_asset
 from fidelity_adapter_api import AdapterResult, SourceContext, UiSourceAdapter, adapter_capabilities, register_adapter, registered_adapters, translate_sources
 from fidelity_core import property_evidence, stable_id
 
@@ -89,6 +90,9 @@ class WebAdapter:
     platforms = ("web",)
     extensions = (".html", ".htm", ".css")
     maturity = "golden"
+    structural_tier = "translated"
+    visual_tier = "projection"
+    native_evidence_required = False
     limitations = ("simple CSS selectors only", "runtime-generated DOM is unsupported")
 
     def supports(self, context: SourceContext) -> bool:
@@ -245,19 +249,91 @@ def _compose_calls(body: str) -> list[dict[str, Any]]:
     return calls
 
 
+def _compose_modifier_calls(value: str) -> list[tuple[str, str]]:
+    calls: list[tuple[str, str]] = []
+    for match in re.finditer(r"\.(\w+)\s*\(", value):
+        open_paren = value.find("(", match.start())
+        close_paren = _balanced_close(value, open_paren, "(", ")")
+        if close_paren is not None:
+            calls.append((match.group(1), value[open_paren + 1:close_paren]))
+    return calls
+
+
+def _compose_length(value: str, tokens: dict[str, Any], group: str = "spacing") -> Any:
+    clean = value.strip()
+    dimension = re.fullmatch(r"(-?\d+(?:\.\d+)?)\.(?:dp|sp)", clean)
+    if dimension:
+        return f"{dimension.group(1)}px"
+    number = re.fullmatch(r"-?\d+(?:\.\d+)?", clean)
+    if number:
+        return float(clean) if "." in clean else int(clean)
+    token_name = _slug(clean).replace("-", "_")
+    if token_name in tokens.get(group, {}):
+        return f"${group}.{token_name}"
+    for candidate, entries in tokens.items():
+        if token_name in entries:
+            return f"${candidate}.{token_name}"
+    return clean
+
+
+def _compose_color(value: str) -> str | None:
+    clean = value.strip()
+    argb = re.fullmatch(r"Color\(0x([0-9a-fA-F]{8})\)", clean)
+    if argb:
+        alpha, red, green, blue = (argb.group(1)[index:index + 2] for index in (0, 2, 4, 6))
+        return f"#{red}{green}{blue}" if alpha.lower() == "ff" else f"#{red}{green}{blue}{alpha}"
+    rgb = re.fullmatch(r"Color\(0x([0-9a-fA-F]{6})\)", clean)
+    if rgb:
+        return f"#{rgb.group(1)}"
+    named = {"Black": "#000000", "White": "#ffffff", "Red": "#f44336", "Green": "#4caf50", "Blue": "#2196f3", "Transparent": "transparent"}
+    match = re.fullmatch(r"Color\.(\w+)", clean)
+    return named.get(match.group(1)) if match else None
+
+
+def _compose_named_value(args: str, name: str) -> str | None:
+    match = re.search(rf"\b{re.escape(name)}\s*=\s*([^,\n]+)", args)
+    return match.group(1).strip() if match else None
+
+
+def _set_compose(node: dict[str, Any], path: str, value: Any, context: SourceContext, line: int, expression: str, adapter: str, confidence: str = "exact") -> None:
+    group, key = path.split(".", 1)
+    node.setdefault(group, {})[key] = value
+    node.setdefault("provenance", {})[path] = property_evidence(context.source, line, expression, adapter, confidence)
+
+
 class ComposeAdapter:
     id = "compose"
-    platforms = ("android", "android-tv")
+    platforms = ("android",)
     extensions = (".kt", ".kts")
-    maturity = "golden"
+    maturity = "structural"
+    structural_tier = "translated"
+    visual_tier = "none"
+    native_evidence_required = True
+    native_providers = ("android-compose-screenshot", "paparazzi", "roborazzi", "android-emulator")
+    resource_resolution = ("R.string", "R.drawable", "R.mipmap", "common Material Icons")
+    layout_features = ("size/fill/weight/aspectRatio", "directional padding", "Row/Column arrangement", "Box alignment", "basic typography")
     limitations = ("supported Compose primitives and modifiers only", "custom composables remain explicit unsupported entries")
+
+    def __init__(self) -> None:
+        self._catalogs: dict[str, AndroidResourceCatalog] = {}
+
+    def prepare(self, contexts: list[SourceContext]) -> None:
+        roots = {str(context.root.resolve()): context.root for context in contexts if self.supports(context)}
+        self._catalogs = {key: AndroidResourceCatalog.discover(root) for key, root in roots.items()}
+
+    def _catalog(self, context: SourceContext) -> AndroidResourceCatalog:
+        key = str(context.root.resolve())
+        if key not in self._catalogs:
+            self._catalogs[key] = AndroidResourceCatalog.discover(context.root)
+        return self._catalogs[key]
 
     def supports(self, context: SourceContext) -> bool:
         return context.path.suffix.lower() in {".kt", ".kts"} and ("@Composable" in context.text or "androidx.compose" in context.text)
 
     def translate(self, context: SourceContext) -> AdapterResult:
         result = AdapterResult(adapter=self.id)
-        platform = "android-tv" if any(value.startswith("android-tv") for value in context.platforms) else "android"
+        catalog = self._catalog(context)
+        platform = "android"
         for match in re.finditer(r"(?:val|const\s+val)\s+(\w+)\s*=\s*(Color\([^\n]+?\)|[^\s]+\.(?:dp|sp))", context.text):
             name, value = match.group(1), match.group(2).strip()
             group = "colors" if value.startswith("Color") else "typography" if value.endswith(".sp") else "spacing"
@@ -285,37 +361,124 @@ class ComposeAdapter:
                 widget, args = call["widget"], call["args"]
                 node_id = f"{screen_id}-{_slug(widget)}-{count}"
                 line = context.text.count("\n", 0, start + call["start"]) + 1
-                native_prefix = "tv-material" if platform == "android-tv" else "material3"
+                native_prefix = "material3"
                 standard = f"{native_prefix}.{widget.lower()}" if widget in {"Scaffold", "Card", "Surface", "Text", "Button", "TextField", "OutlinedTextField", "Icon"} else f"project.{platform}.compose.{widget.lower()}"
                 node: dict[str, Any] = {"type": COMPOSE_TYPES[widget], "component": widget, "layout": {}, "style": {}, "children": [], "source": {"file": context.source, "line": line, "symbol": name}, "confidence": "high", "standardRef": standard, "provenance": {"component": property_evidence(context.source, line, widget, self.id, "exact")}}
-                if standard.startswith(("material3.", "tv-material.")):
+                if standard.startswith("material3."):
                     node["inheritsAppearance"] = True
-                if platform == "android-tv" and node["type"] in {"button", "input", "card"}:
-                    node["states"] = {"default": {}, "focused": {"style": {"outline": "source-focus"}}}
                 literal = re.search(r"(?:text\s*=\s*)?\"([^\"]*)\"", args)
                 if literal and node["type"] in {"text", "button", "input"}:
                     node["text"] = literal.group(1)
                     node["provenance"]["text"] = property_evidence(context.source, line, literal.group(0), self.id, "exact")
+                string_resource = re.search(r"stringResource\s*\(\s*R\.string\.(\w+)\s*\)", args)
+                if string_resource and node["type"] in {"text", "button", "input"}:
+                    resolved = catalog.resolve(f"@string/{string_resource.group(1)}", "string")
+                    if resolved.resolved:
+                        node["text"] = resolved.value
+                        node["provenance"]["text"] = property_evidence(resolved.source, resolved.line, string_resource.group(0), self.id, resolved.confidence)
+                    else:
+                        result.unsupported.append({"adapter": self.id, "file": context.source, "line": line, "expression": string_resource.group(0), "reason": "unresolved-android-string"})
                 if widget in {"Column", "LazyColumn"}:
                     node["layout"]["direction"] = "column"
                     node["provenance"]["layout.direction"] = property_evidence(context.source, line, widget, self.id, "exact")
                 if widget in {"Row", "LazyRow"}:
                     node["layout"]["direction"] = "row"
                     node["provenance"]["layout.direction"] = property_evidence(context.source, line, widget, self.id, "exact")
-                for method, value in re.findall(r"\.(padding|size|width|height)\(([^)]+)\)", args):
-                    key = {"padding": "padding", "size": "width", "width": "width", "height": "height"}[method]
-                    normalized = re.sub(r"(\d+(?:\.\d+)?)\.dp", r"\1px", value.strip())
-                    node["layout"][key] = normalized
-                    node["provenance"][f"layout.{key}"] = property_evidence(context.source, line, f".{method}({value})", self.id, "exact")
-                    if method == "size":
-                        node["layout"]["height"] = normalized
-                        node["provenance"]["layout.height"] = node["provenance"]["layout.width"]
-                if ".fillMaxWidth(" in args:
-                    node["layout"]["width"] = "fill"
-                    node["provenance"]["layout.width"] = property_evidence(context.source, line, ".fillMaxWidth()", self.id, "exact")
-                if ".fillMaxHeight(" in args:
-                    node["layout"]["height"] = "fill"
-                    node["provenance"]["layout.height"] = property_evidence(context.source, line, ".fillMaxHeight()", self.id, "exact")
+                if widget == "Box":
+                    node["layout"]["direction"] = "overlay"
+                    node["provenance"]["layout.direction"] = property_evidence(context.source, line, widget, self.id, "exact")
+                alignments = {
+                    "Alignment.Start": "start", "Alignment.CenterHorizontally": "center", "Alignment.End": "end",
+                    "Alignment.Top": "start", "Alignment.CenterVertically": "center", "Alignment.Bottom": "end",
+                }
+                arrangements = {
+                    "Arrangement.Start": "start", "Arrangement.Top": "start", "Arrangement.End": "end", "Arrangement.Bottom": "end",
+                    "Arrangement.Center": "center", "Arrangement.SpaceBetween": "between", "Arrangement.SpaceAround": "around", "Arrangement.SpaceEvenly": "evenly",
+                }
+                if widget in {"Column", "LazyColumn"}:
+                    alignment = _compose_named_value(args, "horizontalAlignment")
+                    arrangement = _compose_named_value(args, "verticalArrangement")
+                    if alignment in alignments: _set_compose(node, "layout.align", alignments[alignment], context, line, f"horizontalAlignment = {alignment}", self.id)
+                    if arrangement in arrangements: _set_compose(node, "layout.justify", arrangements[arrangement], context, line, f"verticalArrangement = {arrangement}", self.id)
+                if widget in {"Row", "LazyRow"}:
+                    alignment = _compose_named_value(args, "verticalAlignment")
+                    arrangement = _compose_named_value(args, "horizontalArrangement")
+                    if alignment in alignments: _set_compose(node, "layout.align", alignments[alignment], context, line, f"verticalAlignment = {alignment}", self.id)
+                    if arrangement in arrangements: _set_compose(node, "layout.justify", arrangements[arrangement], context, line, f"horizontalArrangement = {arrangement}", self.id)
+                if widget == "Box":
+                    content_alignment = _compose_named_value(args, "contentAlignment")
+                    if content_alignment and "Center" in content_alignment:
+                        _set_compose(node, "layout.align", "center", context, line, f"contentAlignment = {content_alignment}", self.id)
+                        _set_compose(node, "layout.justify", "center", context, line, f"contentAlignment = {content_alignment}", self.id)
+                for method, value in _compose_modifier_calls(args):
+                    expression = f".{method}({value})"
+                    if method in {"size", "width", "height", "requiredSize", "requiredWidth", "requiredHeight"}:
+                        normalized = _compose_length(value.split(",", 1)[0], result.tokens)
+                        keys = ("width", "height") if method in {"size", "requiredSize"} else ("width",) if "Width" in method or method == "width" else ("height",)
+                        for key in keys: _set_compose(node, f"layout.{key}", normalized, context, line, expression, self.id)
+                    elif method == "padding":
+                        named = {name: _compose_named_value(value, name) for name in ("horizontal", "vertical", "start", "end", "top", "bottom")}
+                        if any(named.values()):
+                            key_map = {"horizontal": "paddingHorizontal", "vertical": "paddingVertical", "start": "paddingLeft", "end": "paddingRight", "top": "paddingTop", "bottom": "paddingBottom"}
+                            for side_name, raw in named.items():
+                                if raw: _set_compose(node, f"layout.{key_map[side_name]}", _compose_length(raw, result.tokens), context, line, expression, self.id)
+                        else:
+                            _set_compose(node, "layout.padding", _compose_length(value.split(",", 1)[0], result.tokens), context, line, expression, self.id)
+                    elif method in {"fillMaxWidth", "fillMaxHeight", "fillMaxSize"}:
+                        keys = ("width", "height") if method == "fillMaxSize" else ("width",) if method == "fillMaxWidth" else ("height",)
+                        for key in keys: _set_compose(node, f"layout.{key}", "fill", context, line, expression, self.id)
+                    elif method == "weight":
+                        _set_compose(node, "layout.grow", _compose_length(value.split(",", 1)[0], result.tokens), context, line, expression, self.id)
+                    elif method == "aspectRatio":
+                        _set_compose(node, "layout.aspectRatio", _compose_length(value.split(",", 1)[0], result.tokens), context, line, expression, self.id)
+                    elif method in {"verticalScroll", "horizontalScroll"}:
+                        _set_compose(node, "layout.overflowY" if method == "verticalScroll" else "layout.overflowX", "auto", context, line, expression, self.id)
+                    elif method == "align":
+                        target = next((mapped for source, mapped in alignments.items() if source in value), None)
+                        if target: _set_compose(node, "layout.alignSelf", target, context, line, expression, self.id)
+                    elif method == "background":
+                        color = _compose_color(value.split(",", 1)[0])
+                        if color: _set_compose(node, "style.backgroundColor", color, context, line, expression, self.id)
+                    elif method == "clip":
+                        radius = re.search(r"RoundedCornerShape\s*\(\s*([^)]+)\)", value)
+                        if radius: _set_compose(node, "style.radius", _compose_length(radius.group(1), result.tokens), context, line, expression, self.id)
+                font_size = _compose_named_value(args, "fontSize")
+                if font_size: _set_compose(node, "style.fontSize", _compose_length(font_size, result.tokens, "typography"), context, line, f"fontSize = {font_size}", self.id)
+                line_height = _compose_named_value(args, "lineHeight")
+                if line_height: _set_compose(node, "style.lineHeight", _compose_length(line_height, result.tokens, "typography"), context, line, f"lineHeight = {line_height}", self.id)
+                letter_spacing = _compose_named_value(args, "letterSpacing")
+                if letter_spacing: _set_compose(node, "style.letterSpacing", _compose_length(letter_spacing, result.tokens, "typography"), context, line, f"letterSpacing = {letter_spacing}", self.id)
+                font_weight = _compose_named_value(args, "fontWeight")
+                weight_map = {"FontWeight.Normal": 400, "FontWeight.Medium": 500, "FontWeight.SemiBold": 600, "FontWeight.Bold": 700, "FontWeight.ExtraBold": 800}
+                if font_weight in weight_map: _set_compose(node, "style.fontWeight", weight_map[font_weight], context, line, f"fontWeight = {font_weight}", self.id)
+                color_value = _compose_named_value(args, "color")
+                color = _compose_color(color_value) if color_value else None
+                if color: _set_compose(node, "style.color", color, context, line, f"color = {color_value}", self.id)
+                text_align = _compose_named_value(args, "textAlign")
+                if text_align:
+                    _set_compose(node, "style.textAlign", text_align.rsplit(".", 1)[-1].lower(), context, line, f"textAlign = {text_align}", self.id)
+                if widget == "Icon":
+                    icon = re.search(r"Icons\.(?:Default|Filled|Outlined|Rounded|Sharp|TwoTone)\.(\w+)", args)
+                    if icon:
+                        node["iconName"] = icon.group(1)
+                        asset = material_icon_asset(icon.group(1))
+                        if asset:
+                            node["asset"] = asset
+                            node["provenance"]["asset"] = property_evidence(context.source, line, icon.group(0), self.id, "high")
+                        else:
+                            result.unsupported.append({"adapter": self.id, "file": context.source, "line": line, "expression": icon.group(0), "reason": "unsupported-material-icon"})
+                painter = re.search(r"painterResource\s*\(\s*(?:id\s*=\s*)?R\.(drawable|mipmap)\.(\w+)\s*\)", args)
+                if painter:
+                    drawable = catalog.drawable(f"@{painter.group(1)}/{painter.group(2)}")
+                    if drawable.asset:
+                        node["asset"] = drawable.asset
+                        node["provenance"]["asset"] = property_evidence(drawable.source, drawable.line, painter.group(0), self.id, drawable.confidence)
+                    else:
+                        result.unsupported.append({"adapter": self.id, "file": context.source, "line": line, "expression": painter.group(0), "reason": "unsupported-android-drawable"})
+                description = _compose_named_value(args, "contentDescription")
+                if description and description != "null":
+                    node["alt"] = description.strip('"')
+                    node["semantics"] = {"label": node["alt"], "role": "image" if node["type"] in {"image", "icon"} else "button"}
                 result.nodes[node_id] = node
                 call_nodes.append((call, node_id))
             for call, node_id in call_nodes:
@@ -326,6 +489,8 @@ class ComposeAdapter:
                 ]
                 parent_id = max(parents, key=lambda item: item[0]["blockStart"])[1] if parents else root_id
                 result.nodes[parent_id]["children"].append(node_id)
+                if result.nodes[parent_id].get("layout", {}).get("direction") == "overlay":
+                    result.nodes[node_id].setdefault("layout", {})["gridArea"] = "1 / 1"
             supported_names = set(COMPOSE_TYPES) | {"Modifier", "Color", "RoundedCornerShape"}
             for unknown in re.finditer(r"\b([A-Z]\w*)\s*\(", body):
                 if unknown.group(1) in supported_names:

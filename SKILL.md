@@ -1,6 +1,6 @@
 ---
 name: ui-design-workbench
-description: Reconstruct, review, generate, or redesign repository UI as standards-aware interactive HTML previews; optionally guide ordinary UI implementation with Android, Android TV, Apple, Windows, or Web conventions. Do not use when the user only wants to run the real application.
+description: Reconstruct, review, generate, or redesign repository UI as standards-aware interactive HTML previews; optionally guide ordinary UI implementation for Android, iOS, macOS, Windows, Flutter, or Web. Do not use when the user only wants to run the real application.
 metadata:
   compatibility: "Python 3.10+. MCP is optional; CLI works standalone."
 ---
@@ -24,7 +24,7 @@ If first-use context says `setupRequired`, ask only for `low`, `medium`, or `hig
 
 ## 2. Route the request
 
-- Reconstruct/generate/redesign: read [references/design-modes.md](references/design-modes.md), then only the matching platform section from [references/platform-standards.md](references/platform-standards.md). Use cached evidence and `uidw workbench`; validate transfer fidelity, not product UX.
+- Reconstruct/generate/redesign: read [references/design-modes.md](references/design-modes.md), then only the matching platform section from [references/platform-standards.md](references/platform-standards.md). Use cached evidence and `uidw workbench`; validate transfer fidelity, not product UX. For Android or Apple visual accuracy also read [references/native-rendering.md](references/native-rendering.md) and call MCP `ui_native_status` (or `uidw native status`).
 - Explicit review/audit/critique: read [references/ui-reviewer.md](references/ui-reviewer.md) and [references/review-workflow.md](references/review-workflow.md). Review immutable Before only and work in bounded screen batches.
 - Workbench chrome behavior: read [references/workbench-ui.md](references/workbench-ui.md).
 - Ordinary UI source task with `uiMode.enabled=true`: read [references/ui-guidance-mode.md](references/ui-guidance-mode.md). Do not create a preview or review unless requested.
@@ -46,8 +46,7 @@ Allowed operations are `upsert-findings`, `upsert-versions`, `merge-annotations`
 - Reconstruction, generation, redesign, Low/Medium/High, `workbench`, and `check` never trigger an automatic UI/UX audit. Only an explicit review request creates findings.
 - Do not run the target app, emulator, simulator, build, or dev server unless separately requested. Headless checks may open only generated local HTML.
 - Preserve discovered screens, routes, project components, platform idioms, tokens, themes, states, provenance, and unsupported gaps. Do not invent polish or browser-default replacements.
-- For Android Views, treat navigation destinations and Activity/Fragment/Dialog classes as screens; treat layout items, cells, partials, Data Binding metadata, and navigation XML as components or topology rather than visual screens. Static includes may be expanded, but Data Binding expressions, custom views, constraints, styles/theme attributes, and runtime-injected content remain explicit gaps.
 - HTML is a projection. Base IR is immutable Before; proposal versions are sparse overrides.
-- Never label an Android HTML projection visually verified without separate Layoutlib/emulator screenshots or golden-image comparison evidence.
+- Android/Apple source translation is structural-only until a source-matched native capture exists. Never call HTML a native render.
 - Applying a proposal to real source requires a separate explicit `Apply to project` or direct-fix authorization, bounded source targets, incremental sync, and targeted verification. Never repeat the full AI review automatically.
 - Keep cache and review artifacts outside source control unless the user explicitly requests otherwise.

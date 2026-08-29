@@ -52,7 +52,7 @@ from scan_ui import (
 
 
 CACHE_VERSION = 8
-CLI_VERSION = "0.3.5"
+CLI_VERSION = "0.5.0"
 CONFIG_VERSION = 5
 STATE_DIR_NAME = ".ui-design-workbench"
 CONFIG_NAME = "config.json"
@@ -75,13 +75,16 @@ CONTEXT_NAME = "ui-context.json"
 SYNC_REPORT_NAME = "sync-report.json"
 DESIGN_MODEL_NAME = "design-model.json"
 REVIEW_STATE_NAME = "review-state.json"
+NATIVE_RENDER_STATE_NAME = "native-render-state.json"
 STATE_LOCK_NAME = ".state.lock"
 STATE_GITIGNORE = "*\n!.gitignore\n!config.json\n"
 SKILL_NAME = "ui-design-workbench"
 SKILL_MARKER_NAME = ".uidw-skill.json"
 SUPPORTED_SKILL_AGENTS = ("codex", "claude", "cursor", "gemini", "copilot", "opencode", "agents")
 SKILL_SCRIPT_FILES = (
+    "android_resource_resolver.py",
     "android_xml_support.py",
+    "apple_resource_resolver.py",
     "coverage_report.py",
     "fidelity_adapter_api.py",
     "fidelity_adapters.py",
@@ -90,6 +93,10 @@ SKILL_SCRIPT_FILES = (
     "generate_interaction_matrix.py",
     "ir_contracts.py",
     "merge_review_state.py",
+    "native_render_android.py",
+    "native_render_apple.py",
+    "native_render_contracts.py",
+    "native_render_registry.py",
     "quality_common.py",
     "render_preview.py",
     "scan_ui.py",
@@ -303,6 +310,7 @@ def state_paths(root: Path) -> dict[str, Path]:
         "sync": directory / SYNC_REPORT_NAME,
         "design": directory / DESIGN_MODEL_NAME,
         "review": directory / REVIEW_STATE_NAME,
+        "native": directory / NATIVE_RENDER_STATE_NAME,
         "lock": directory / STATE_LOCK_NAME,
         "gitignore": directory / ".gitignore",
     }
@@ -1972,6 +1980,17 @@ def print_result(value: dict[str, Any], as_json: bool) -> None:
             print(f"- {item.get('agent')}: {item.get('status')} · {item.get('path')}")
         print("Перезапустите агент или откройте новую сессию.")
         return
+    if value.get("type") == "ui-design-workbench-native-render-state":
+        summary = value.get("summary", {})
+        platforms = ", ".join(summary.get("detectedPlatforms", [])) or "не обнаружены"
+        configured = ", ".join(summary.get("configuredProviders", [])) or "нет"
+        print(f"Нативный рендер: {value.get('currentFidelityTier', 'structural')} · платформы: {platforms}")
+        print(f"Настроенные провайдеры: {configured}")
+        print(f"Нативные снимки: {summary.get('nativeCaptureCount', 0)} · устаревшие: {summary.get('staleCaptureCount', 0)}")
+        print(f"Важно: нативный запуск {'выполнялся' if value.get('nativeExecutionStarted') else 'не выполнялся'}.")
+        if value.get("next"):
+            print(f"Следующий шаг: {value['next']}")
+        return
     if "propertyProvenance" in value and "schemaVersion" in value:
         coverage = value.get("propertyProvenance", {})
         labels = {"pass": "пройдено", "fail": "ошибка", "not-applicable": "не применимо"}
@@ -2453,6 +2472,9 @@ def parse_args() -> argparse.Namespace:
     init_parser.add_argument("--detail", choices=("low", "medium", "high"), default=None, help="Low: minimal data; Medium: representative data; High: expanded data, themes, and reconstruction/HTML checks; no automatic UI/UX review")
     status_parser = subparsers.add_parser("status", help="Показать, актуален ли UI-кеш")
     status_parser.add_argument("--verify-content", action="store_true", help="Hash every candidate file instead of trusting unchanged metadata")
+    native_parser = subparsers.add_parser("native", help="Показать готовность точного Android/iOS-рендера")
+    native_parser.add_argument("action", choices=("status",), nargs="?", default="status")
+    native_parser.add_argument("--platform", choices=("all", "android", "apple"), default="all")
     sync_parser = subparsers.add_parser("sync", help=advanced_help)
     sync_parser.add_argument("--force", action="store_true", help="Force a full UI rescan")
     sync_parser.add_argument("--verify-content", action="store_true", help="Hash every candidate file before deciding")
@@ -2624,6 +2646,10 @@ def main() -> int:
             result = initialize(root, args.force, args.project_cache, ui_mode, detail, setup_completed)
         elif args.command == "status":
             result, _, _, _ = inspect_cache(root, args.verify_content)
+        elif args.command == "native":
+            from native_render_registry import native_render_status
+
+            result = native_render_status(root, paths["native"], args.platform)
         elif args.command == "sync":
             result, paths, _ = ensure_initialized(root, args.force, args.verify_content, synchronize=True)
         elif args.command == "context":
@@ -2775,7 +2801,7 @@ def main() -> int:
         elif args.command == "visual-test":
             result = visual_test(args.baseline, args.candidate, args.output_dir, args.baseline_geometry, args.candidate_geometry)
         elif args.command == "fidelity":
-            _, ir = load_ir_argument(paths, args.ir)
+            ir = {} if args.action == "capabilities" else load_ir_argument(paths, args.ir)[1]
             result = fidelity_command(ir, args.action, args.identifier, args.output, args.format)
         elif args.command == "install-skill":
             result = install_skill(args.agent, args.target)

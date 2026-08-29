@@ -8,100 +8,64 @@
 UI-код → кешированная карта → строгий UI IR → интерактивный HTML
 ```
 
-Инструмент помогает быстро понять незнакомый интерфейс, увидеть экраны и переходы, сравнить предложение с исходным макетом или провести отдельное UI/UX-ревью.
-
-## Что вы получаете
-
-- Повторно используемую карту экранов, маршрутов, компонентов, токенов, тем и состояний.
-- Интерактивный HTML-прототип со ссылками на исходники и найденной навигацией.
-- Инкрементальный анализ: неизменённые UI-файлы не сканируются повторно.
-- Проверяемую реконструкцию: неподдерживаемый код отмечается, а не заменяется догадками.
-- Безопасный процесс ревью: исходники проекта не меняются до отдельного apply-шага.
-
-Поддерживаются Web, React, Vue, Svelte, Jetpack Compose, Android Views XML, SwiftUI, Storyboard/XIB, WinUI/WPF, Flutter и React Native.
+Помогает понять незнакомый интерфейс, увидеть экраны и навигацию, проверить реконструкцию или отдельно провести UI/UX-ревью.
 
 ## Установка
 
-Нужен Python 3.10+. Локальный AI-агент необязателен. Node.js и Chrome/Edge/Chromium также необязательны и нужны только для полных браузерных проверок.
-
-Если `pipx` ещё не установлен, установите его один раз:
-
-```powershell
-py -m pip install --user pipx
-py -m pipx ensurepath
-```
-
-```sh
-python3 -m pip install --user pipx
-python3 -m pipx ensurepath
-```
-
-Затем установите CLI и Agent Skill — клонировать репозиторий не нужно:
+Нужны Python 3.10+ и [`pipx`](https://pipx.pypa.io/).
 
 ```sh
 pipx install ui-design-workbench-cli
 uidw install-skill codex
 ```
 
-Вместо `codex` можно указать `claude`, `cursor`, `gemini`, `copilot`, `opencode`, `agents` или `all`.
+`install-skill` также поддерживает `claude`, `cursor`, `gemini`, `copilot`, `opencode`, `agents` и `all`.
 
-До первой публикации в PyPI тот же пакет можно установить напрямую из ZIP-архива GitHub:
-
-```sh
-pipx install "https://github.com/Elgreed/ui-design-workbench/archive/refs/heads/main.zip"
-uidw install-skill codex
-```
-
-Если нужен локальный MCP:
+Необязательная локальная MCP-интеграция:
 
 ```sh
 pipx inject ui-design-workbench-cli "mcp>=2,<3"
 ```
 
-Проверьте установку:
+Проверка установки:
 
 ```sh
 uidw --version
 uidw doctor
 ```
 
-Обновление CLI и установленного skill:
-
-```sh
-pipx upgrade ui-design-workbench-cli
-uidw install-skill codex
-```
-
-Готового Windows `.exe` пока нет: это будущий дополнительный артефакт, а не основной формат пакета. Подробности в [RELEASING.md](RELEASING.md).
-
 ## Быстрый старт
 
-Один раз выберите детализацию макета:
+Один раз выберите детализацию:
 
 ```sh
 uidw --repo <repo> config setup
 ```
 
-Соберите и откройте workbench по исходникам:
+Соберите и откройте workbench из исходников:
 
 ```sh
 uidw --repo <repo> workbench --output-dir <artifacts> --level full --open
 ```
 
-Откройте один экран или интерактивный прототип:
-
-```sh
-uidw --repo <repo> open <artifacts>/ui-preview.html --launch --view single --screen <screen-id>
-uidw --repo <repo> open <artifacts>/ui-preview.html --launch --view prototype --screen <screen-id>
-```
-
-Запускайте UI/UX-ревью только когда нужны продуктовая оценка и предложения:
+Запускайте UI/UX-аудит только когда нужна продуктовая критика:
 
 ```sh
 uidw --repo <repo> review --output-dir <review-dir> --level full
 ```
 
-`workbench` и `check` проверяют реконструкцию. Только `review` запускает UI/UX-аудит.
+`workbench` и `check` проверяют проекцию. Только `review` создаёт UI/UX-замечания.
+
+## Возможности
+
+- Карта экранов, маршрутов, компонентов, токенов, тем и состояний.
+- Автономный HTML со ссылками на исходники и восстановленной навигацией.
+- Инкрементальный анализ только изменившихся UI-файлов.
+- Доказательства для свойств и явные пробелы вместо придуманного интерфейса.
+- Точечные патчи ревью и отдельный авторизованный apply-шаг для исходников.
+- Структурный перенос Android/Apple-ресурсов и поиск доступных путей нативного снимка.
+
+Поддерживаются Web, React, Vue, Svelte, Jetpack Compose, Android Views XML, SwiftUI, Storyboard/XIB, WinUI/WPF и Flutter.
 
 ## Основные команды
 
@@ -109,11 +73,12 @@ uidw --repo <repo> review --output-dir <review-dir> --level full
 | --- | --- |
 | `uidw doctor` | Проверить установку и необязательные зависимости |
 | `uidw --repo <repo> context --json` | Получить компактный кешированный контекст |
-| `uidw --repo <repo> workbench ...` | Собрать и проверить HTML-workbench |
-| `uidw --repo <repo> check ...` | Повторить проверку без UI/UX-ревью |
-| `uidw --repo <repo> review ...` | Явно запустить UI/UX-ревью |
-| `uidw --repo <repo> scope ...` | Подготовить контекст одного экрана или замечания |
+| `uidw --repo <repo> scope ...` | Подготовить ограниченный контекст экрана или замечания |
 | `uidw --repo <repo> patch ...` | Проверить или применить точечные изменения артефакта |
+| `uidw --repo <repo> workbench ...` | Собрать и проверить HTML-проекцию |
+| `uidw --repo <repo> native status` | Найти нативные Android/Apple-провайдеры без запуска |
+| `uidw --repo <repo> check ...` | Повторить проверки без UI/UX-аудита |
+| `uidw --repo <repo> review ...` | Явно запустить UI/UX-ревью |
 | `uidw --repo <repo> fidelity ...` | Посмотреть доказательства и ограничения адаптеров |
 | `uidw --repo <repo> mcp` | Запустить необязательный локальный MCP через stdio |
 
@@ -121,17 +86,20 @@ uidw --repo <repo> review --output-dir <review-dir> --level full
 
 ## Точность и безопасность
 
-- HTML — статическая проекция исходников, а не доказательство работы приложения или pixel parity.
-- Неподдерживаемые bindings, custom drawing, runtime-данные и неизвестное платформенное поведение остаются явно отмеченными пробелами.
-- Android XML-реконструкция не выполняет Data Binding, custom views, constraints и наследование тем. Для визуального подтверждения нужны Layoutlib, скриншоты эмулятора или golden images.
-- Артефакты ревью не разрешают менять исходники. Применение предложения — отдельный явный шаг.
+- HTML — статическая проекция исходников, а не доказательство runtime- или pixel-parity.
+- Перенос Android и Apple остаётся структурным до появления нативного снимка из тех же исходников.
+- Неподдерживаемые bindings, custom drawing, runtime-данные и платформенное поведение остаются явными пробелами.
+- Preview и review не меняют исходники приложения; применение предложения — отдельный шаг.
 - Производный кеш и состояние ревью по умолчанию хранятся вне целевого репозитория.
 
-## Интеграция с агентами и MCP
+## Обновление
 
-Agent Skill учит локальные AI-агенты использовать CLI как детерминированный движок. Для больших ревью `scope` возвращает полный ограниченный контекст, а `patch` принимает только точечные операции — агенту не нужен весь IR.
+```sh
+pipx upgrade ui-design-workbench-cli
+uidw install-skill codex
+```
 
-Необязательный `uidw-mcp` предоставляет те же операции через локальный `stdio`, не открывает порт и не заменяет обычный CLI.
+Windows `.exe` пока не публикуется. Основной кросс-платформенный способ установки — PyPI + `pipx`.
 
 ## Документация
 
@@ -139,8 +107,8 @@ Agent Skill учит локальные AI-агенты использовать
 - [Выпуск и распространение](RELEASING.md)
 - [Интеграции с агентами](references/agent-integrations.md)
 - [Контракт точности](references/fidelity.md)
+- [Нативный рендеринг](references/native-rendering.md)
 - [Схема IR](references/ir-schema.md)
 - [Процесс ревью](references/review-workflow.md)
-- [Контракт валидации](references/validation.md)
 
-Версия в разработке: `0.3.5` (ещё не опубликована). См. [CHANGELOG.md](CHANGELOG.md).
+Текущая версия CLI: `0.5.0`.

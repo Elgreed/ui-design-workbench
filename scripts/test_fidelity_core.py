@@ -89,7 +89,9 @@ class FidelityCoreTests(unittest.TestCase):
         report = fidelity_report(ir)
         self.assertEqual(report["status"], "pass", report["strictErrors"])
         platforms = {screen["platform"] for screen in ir["screens"]}
-        self.assertTrue({"android", "android-tv", "ios", "windows", "flutter", "react-native", "web"}.issubset(platforms))
+        self.assertTrue({"android", "ios", "windows", "flutter", "web"}.issubset(platforms))
+        self.assertNotIn("android-tv", platforms)
+        self.assertNotIn("react-native", platforms)
         dark = next(item for item in ir["themes"]["items"] if item["id"] == "dark")
         self.assertEqual(dark["tokenOverrides"]["colors"]["surface"]["value"], "#121212")
         self.assertEqual(ir["tokens"]["spacing"]["space_md"]["value"], "16px")

@@ -1,0 +1,6 @@
+<resources>
+    <style name="TitleText">
+        <item name="android:textColor">@color/primary</item>
+        <item name="android:textSize">20sp</item>
+    </style>
+</resources>

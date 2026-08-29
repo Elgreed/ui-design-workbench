@@ -13,11 +13,10 @@ Use this lightweight path only when `ui-context.json` reports `uiMode.enabled: t
 ## Platform routing
 
 - Android: existing Compose/Views stack, Material guidance compatible with that stack, system back/navigation, touch targets, state and accessibility semantics.
-- Android TV: TV Material or existing Leanback/Views, D-pad reachability, visible/restored focus, ten-foot legibility, safe content area, and no touch-only interaction.
-- iOS/iPadOS: existing SwiftUI/UIKit stack, Apple navigation and presentation patterns, Dynamic Type, safe areas, and semantic controls.
+- iOS: existing SwiftUI/UIKit stack, Apple navigation and presentation patterns, Dynamic Type, safe areas, and semantic controls.
 - macOS: existing SwiftUI/AppKit stack, window/menu/toolbar conventions, keyboard commands, compact pointer geometry, and active/inactive state.
 - Windows: existing WinUI/WPF/other installed stack, Fluent-compatible command placement, keyboard/focus/high-contrast behavior, resizable-window layout, and pointer/touch differences.
+- Flutter: existing Material/Cupertino/adaptive stack, platform-aware navigation and semantics, scalable text, safe areas, and responsive layout.
 - Web: existing framework and design system, semantic HTML, WCAG 2.2 AA, keyboard/focus behavior, responsive layout, and established component primitives.
-- Cross-platform frameworks: share brand and domain structure, but adapt navigation, control geometry, input, system surfaces, and accessibility to each declared target family.
 
 The mode is advisory and scoped. It does not claim that the whole product was reviewed or made compliant.

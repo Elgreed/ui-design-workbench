@@ -2,57 +2,26 @@
 
 [Русская версия](README.ru.md) · [Changelog](CHANGELOG.md) · [Release guide](RELEASING.md)
 
-Turn repository UI source into an offline, interactive HTML workbench—without building or running the application.
+Turn repository UI source into an offline interactive HTML workbench—without building or running the application.
 
 ```text
 UI source → cached UI map → strict UI IR → interactive HTML
 ```
 
-Use it to understand an unfamiliar UI, inspect screens and navigation, compare a proposal with the source-derived baseline, or run an explicit UI/UX review.
-
-## What you get
-
-- A reusable inventory of screens, routes, components, tokens, themes, and states.
-- An interactive HTML prototype with source links and declared navigation.
-- Incremental scans: unchanged UI files are not analyzed again.
-- Traceable reconstruction: unsupported source is reported instead of guessed.
-- A safe review flow: project source stays read-only until a separate apply step.
-
-Supported sources include Web, React, Vue, Svelte, Jetpack Compose, Android Views XML, SwiftUI, Storyboard/XIB, WinUI/WPF, Flutter, and React Native.
+Use it to understand unfamiliar UI, inspect screens and navigation, verify a reconstruction, or run an explicit UI/UX review.
 
 ## Install
 
-Requirements: Python 3.10+. A local AI agent is optional. Node.js and Chrome/Edge/Chromium are also optional and enable full browser diagnostics.
-
-Install `pipx` once if it is not already available:
-
-```powershell
-py -m pip install --user pipx
-py -m pipx ensurepath
-```
-
-```sh
-python3 -m pip install --user pipx
-python3 -m pipx ensurepath
-```
-
-Then install the CLI and its Agent Skill—no repository clone is needed:
+Requires Python 3.10+ and [`pipx`](https://pipx.pypa.io/).
 
 ```sh
 pipx install ui-design-workbench-cli
 uidw install-skill codex
 ```
 
-Replace `codex` with `claude`, `cursor`, `gemini`, `copilot`, `opencode`, `agents`, or `all`.
+`install-skill` also supports `claude`, `cursor`, `gemini`, `copilot`, `opencode`, `agents`, and `all`.
 
-Before the first PyPI release, install the same package directly from the GitHub archive:
-
-```sh
-pipx install "https://github.com/Elgreed/ui-design-workbench/archive/refs/heads/main.zip"
-uidw install-skill codex
-```
-
-For optional local MCP support:
+Optional local MCP support:
 
 ```sh
 pipx inject ui-design-workbench-cli "mcp>=2,<3"
@@ -65,55 +34,51 @@ uidw --version
 uidw doctor
 ```
 
-Upgrade both the CLI and its installed skill with:
-
-```sh
-pipx upgrade ui-design-workbench-cli
-uidw install-skill codex
-```
-
-A Windows `.exe` is not published yet; it remains a future convenience artifact, not the primary package format. See [RELEASING.md](RELEASING.md).
-
 ## Quick start
 
-Choose the amount of preview detail once:
+Choose preview detail once:
 
 ```sh
 uidw --repo <repo> config setup
 ```
 
-Build and open a source-derived workbench:
+Build and open the source-derived workbench:
 
 ```sh
 uidw --repo <repo> workbench --output-dir <artifacts> --level full --open
 ```
 
-Open one screen or follow the reconstructed navigation:
-
-```sh
-uidw --repo <repo> open <artifacts>/ui-preview.html --launch --view single --screen <screen-id>
-uidw --repo <repo> open <artifacts>/ui-preview.html --launch --view prototype --screen <screen-id>
-```
-
-Run UI/UX review only when you want product critique and proposals:
+Run a UI/UX audit only when product critique is wanted:
 
 ```sh
 uidw --repo <repo> review --output-dir <review-dir> --level full
 ```
 
-`workbench` and `check` validate the reconstruction. Only `review` starts a UI/UX audit.
+`workbench` and `check` validate the projection. Only `review` creates UI/UX findings.
+
+## What it provides
+
+- Screen, route, component, token, theme, and state inventory.
+- Standalone HTML with source links and reconstructed navigation.
+- Incremental scans that reprocess only changed UI files.
+- Property-level evidence and explicit unsupported gaps instead of guessed UI.
+- Sparse review patches and a separate, authorized source-apply step.
+- Structural Android and Apple resource projection, plus discovery of available native capture paths.
+
+Supported source families include Web, React, Vue, Svelte, Jetpack Compose, Android Views XML, SwiftUI, Storyboard/XIB, WinUI/WPF, and Flutter.
 
 ## Main commands
 
 | Command | Purpose |
 | --- | --- |
-| `uidw doctor` | Check the installation and optional dependencies |
+| `uidw doctor` | Check installation and optional dependencies |
 | `uidw --repo <repo> context --json` | Read compact cached project context |
-| `uidw --repo <repo> workbench ...` | Build and validate the HTML workbench |
-| `uidw --repo <repo> check ...` | Re-run projection checks without UI/UX review |
-| `uidw --repo <repo> review ...` | Start an explicit UI/UX review |
-| `uidw --repo <repo> scope ...` | Prepare bounded context for one screen or finding |
+| `uidw --repo <repo> scope ...` | Prepare bounded context for a screen or finding |
 | `uidw --repo <repo> patch ...` | Validate or apply sparse review-artifact changes |
+| `uidw --repo <repo> workbench ...` | Build and validate the HTML projection |
+| `uidw --repo <repo> native status` | Discover native Android/Apple render providers without running them |
+| `uidw --repo <repo> check ...` | Repeat projection checks without a UI/UX audit |
+| `uidw --repo <repo> review ...` | Start an explicit UI/UX review |
 | `uidw --repo <repo> fidelity ...` | Inspect source evidence and adapter limits |
 | `uidw --repo <repo> mcp` | Start the optional local stdio MCP server |
 
@@ -121,17 +86,20 @@ Run `uidw help overview`, `uidw help advanced`, or `uidw <command> --help` for d
 
 ## Accuracy and safety
 
-- The HTML is a static source projection, not proof of runtime or pixel parity.
-- Unsupported bindings, custom drawing, runtime data, and unresolved platform behavior remain explicit gaps.
-- Android XML reconstruction does not execute Data Binding, custom views, constraints, or theme inheritance. Visual parity requires Layoutlib, emulator screenshots, or golden-image evidence.
-- Review artifacts never authorize source changes. Applying a proposal is a separate, explicit step.
+- HTML is a static source projection, not proof of runtime or pixel parity.
+- Android and Apple translation remains structural until a source-matched native capture exists.
+- Unsupported bindings, custom drawing, runtime data, and platform behavior remain explicit gaps.
+- Preview and review keep application source read-only; applying a proposal is a separate step.
 - Derived cache and review state live outside the target repository by default.
 
-## Agent and MCP integration
+## Upgrade
 
-The bundled Agent Skill teaches filesystem-capable agents to use the CLI as the deterministic engine. For large reviews, `scope` returns a structurally complete bounded context and `patch` accepts only sparse review operations; agents do not need the full IR.
+```sh
+pipx upgrade ui-design-workbench-cli
+uidw install-skill codex
+```
 
-The optional `uidw-mcp` server exposes the same bounded operations over local stdio. It opens no port, and the regular CLI remains the complete fallback.
+A Windows `.exe` is not published yet. PyPI + `pipx` is the primary cross-platform installation path.
 
 ## Documentation
 
@@ -139,8 +107,8 @@ The optional `uidw-mcp` server exposes the same bounded operations over local st
 - [Release and distribution guide](RELEASING.md)
 - [Agent integrations](references/agent-integrations.md)
 - [Fidelity contract](references/fidelity.md)
+- [Native rendering](references/native-rendering.md)
 - [IR schema](references/ir-schema.md)
 - [Review workflow](references/review-workflow.md)
-- [Validation contract](references/validation.md)
 
-Development version: `0.3.5` (not yet published). See [CHANGELOG.md](CHANGELOG.md).
+Current CLI version: `0.5.0`.

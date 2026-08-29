@@ -1,0 +1,9 @@
+{
+  "title": "Project overview",
+  "accent": "#007aff",
+  "surface": "#f2f2f7",
+  "horizontalPadding": 20,
+  "spacing": 12,
+  "radius": 16,
+  "image": "Sample/Assets.xcassets/Hero.imageset/hero.svg"
+}

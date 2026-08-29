@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Elgreed/ui-design-workbench/schemas/native-render-state.schema.json",
+  "title": "UI Design Workbench native render state",
+  "type": "object",
+  "required": ["schemaVersion", "type", "repository", "status", "currentFidelityTier", "nativeExecutionStarted", "platforms", "providers", "captures"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "type": { "const": "ui-design-workbench-native-render-state" },
+    "repository": {
+      "type": "object",
+      "required": ["root"],
+      "properties": { "root": { "type": "string" } },
+      "additionalProperties": true
+    },
+    "status": { "enum": ["pass", "not-applicable"] },
+    "currentFidelityTier": { "enum": ["structural", "native-preview", "device-verified"] },
+    "nativeExecutionStarted": { "type": "boolean" },
+    "platforms": { "type": "array", "items": { "type": "object" } },
+    "providers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "platform", "status", "availableFidelityTier", "execution"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "platform": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["configured", "available", "not-configured", "host-required", "not-applicable"] },
+          "availableFidelityTier": { "enum": ["native-preview", "device-verified"] },
+          "execution": { "const": "explicit-only" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "captures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "providerId", "platform", "screenId", "sourceFingerprint", "status", "fidelityTier"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "providerId": { "type": "string", "minLength": 1 },
+          "platform": { "type": "string", "minLength": 1 },
+          "screenId": { "type": "string", "minLength": 1 },
+          "stateId": { "type": "string" },
+          "sourceFingerprint": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["ready", "blocked", "failed", "stale"] },
+          "fidelityTier": { "enum": ["native-preview", "device-verified"] },
+          "artifacts": {
+            "type": "object",
+            "properties": {
+              "image": { "$ref": "#/$defs/relativePath" },
+              "semantics": { "$ref": "#/$defs/relativePath" },
+              "geometry": { "$ref": "#/$defs/relativePath" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "$defs": {
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:[/\\\\])(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    }
+  },
+  "additionalProperties": true
+}

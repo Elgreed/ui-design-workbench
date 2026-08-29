@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ui-design-workbench-cli"
-version = "0.3.5"
+version = "0.5.0"
 description = "Repository UI indexing, graph, preview, and deterministic review CLI"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -43,6 +43,12 @@ py-modules = [
   "fidelity_adapter_api",
   "fidelity_adapters",
   "fidelity_platform_adapters",
+  "android_resource_resolver",
+  "apple_resource_resolver",
+  "native_render_contracts",
+  "native_render_android",
+  "native_render_apple",
+  "native_render_registry",
   "quality_common",
   "render_preview",
   "coverage_report",
@@ -54,7 +60,9 @@ py-modules = [
 "share/ui-design-workbench/references" = ["references/*.md", "references/platform-profiles.json"]
 "share/ui-design-workbench/schemas" = ["schemas/*.json"]
 "share/ui-design-workbench/scripts" = [
+  "scripts/android_resource_resolver.py",
   "scripts/android_xml_support.py",
+  "scripts/apple_resource_resolver.py",
   "scripts/coverage_report.py",
   "scripts/fidelity_adapter_api.py",
   "scripts/fidelity_adapters.py",
@@ -63,6 +71,10 @@ py-modules = [
   "scripts/generate_interaction_matrix.py",
   "scripts/ir_contracts.py",
   "scripts/merge_review_state.py",
+  "scripts/native_render_android.py",
+  "scripts/native_render_apple.py",
+  "scripts/native_render_contracts.py",
+  "scripts/native_render_registry.py",
   "scripts/quality_common.py",
   "scripts/render_preview.py",
   "scripts/scan_ui.py",

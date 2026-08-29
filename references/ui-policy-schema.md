@@ -13,15 +13,6 @@ An optional `.codex/ui-policy.json` makes design choices repeatable across tasks
       "minimumTarget": 48,
       "adaptive": true
     },
-    "android-tv": {
-      "standardProfile": "android-tv",
-      "implementation": "compose-tv",
-      "minimumTarget": 48,
-      "primaryInput": "dpad",
-      "referenceViewport": {"width": 960, "height": 540},
-      "safeContentInsets": {"left": 48, "right": 48, "top": 27, "bottom": 27},
-      "requireVisibleFocus": true
-    },
     "ios": {
       "standardProfile": "apple-hig",
       "implementation": "swiftui",
@@ -45,6 +36,13 @@ An optional `.codex/ui-policy.json` makes design choices repeatable across tasks
       "requireVisibleFocus": true,
       "requireHighContrast": true,
       "resizableWindows": true
+    },
+    "flutter": {
+      "standardProfile": "flutter-adaptive",
+      "implementation": "flutter",
+      "minimumTarget": 48,
+      "adaptive": true,
+      "preferPlatformSemantics": true
     },
     "web": {
       "standardProfile": "web-platform",

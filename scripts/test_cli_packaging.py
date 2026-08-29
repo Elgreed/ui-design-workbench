@@ -143,6 +143,22 @@ class CliPackagingTests(unittest.TestCase):
         self.assertNotIn("==SUPPRESS==", completed.stdout)
         self.assertNotIn("visual-test", completed.stdout)
 
+    def test_fidelity_capabilities_do_not_require_initialized_project(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            completed = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "uidw.py"), "--repo", str(root), "--json", "fidelity", "capabilities"],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=False,
+            )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        payload = json.loads(completed.stdout)
+        families = {family for adapter in payload["adapters"] for family in adapter["platforms"]}
+        self.assertEqual(families, {"android", "ios", "macos", "windows", "flutter", "web"})
+
     def test_task_help_covers_primary_review_and_apply_commands(self) -> None:
         self.assertIn("uidw workbench", help_topic("overview")["text"])
         self.assertIn("uidw review", help_topic("overview")["text"])
@@ -188,7 +204,7 @@ class CliPackagingTests(unittest.TestCase):
         self.assertEqual(config["project"]["scripts"]["uidw"], "uidw:main")
         self.assertEqual(config["project"]["scripts"]["uidw-mcp"], "uidw_mcp:main")
         self.assertIn("mcp", config["project"]["optional-dependencies"])
-        for name in ("ui-graph.schema.json", "ui-agent-job.schema.json", "ui-ir.schema.json", "ui-ir.patch.schema.json", "uidw-config.schema.json"):
+        for name in ("ui-graph.schema.json", "ui-agent-job.schema.json", "ui-ir.schema.json", "ui-ir.patch.schema.json", "uidw-config.schema.json", "native-render-state.schema.json"):
             schema = json.loads((ROOT / "schemas" / name).read_text(encoding="utf-8"))
             self.assertIn("$schema", schema)
         data_files = config["tool"]["setuptools"]["data-files"]
@@ -227,6 +243,7 @@ class CliPackagingTests(unittest.TestCase):
         self.assertIn("ui-ir.patch.json", skill)
         self.assertIn("metadata:", skill)
         self.assertIn("compatibility:", skill)
+        self.assertIn("ui_native_status", skill)
 
     def test_installers_cover_supported_agents(self) -> None:
         combined = (ROOT / "install.ps1").read_text(encoding="utf-8") + (ROOT / "install.sh").read_text(encoding="utf-8")

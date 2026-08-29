@@ -14,6 +14,14 @@ from validate_platform_profiles import validate_profiles
 
 PLATFORM_CASES = (
     {
+        "family": "android", "adapter": "android-compose", "profile": "material3", "standardRef": "material3.Button",
+        "path": Path("HomeScreen.kt"), "source": "import androidx.compose.runtime.Composable\n@Composable fun HomeScreen() {}",
+    },
+    {
+        "family": "ios", "adapter": "swiftui", "profile": "apple-hig", "standardRef": "apple.Button",
+        "path": Path("HomeView.swift"), "source": "import SwiftUI\nstruct HomeView: View { var body: some View { Text(\"Home\") } }",
+    },
+    {
         "family": "windows",
         "adapter": "windows-winui",
         "profile": "windows-fluent",
@@ -30,12 +38,12 @@ PLATFORM_CASES = (
         "source": "import SwiftUI\nimport AppKit\nstruct WorkspaceView: View { var body: some View { Text(\"Workspace\") } }",
     },
     {
-        "family": "android-tv",
-        "adapter": "android-tv-compose",
-        "profile": "android-tv",
-        "standardRef": "androidtv.Card",
-        "path": Path("TvHomeScreen.kt"),
-        "source": "import androidx.compose.runtime.Composable\nimport androidx.tv.material3.Card\n@Composable fun TvHomeScreen() { Card(onClick = {}) {} }",
+        "family": "flutter", "adapter": "flutter", "profile": "flutter-adaptive", "standardRef": "flutter.Text",
+        "path": Path("home.dart"), "source": "import 'package:flutter/widgets.dart';\nclass Home extends StatelessWidget { Widget build(context) => Text('Home'); }",
+    },
+    {
+        "family": "web", "adapter": "react-web", "profile": "web-platform", "standardRef": "html.button",
+        "path": Path("Home.tsx"), "source": "import React from 'react'; export function Home() { return <button>Home</button>; }",
     },
 )
 
@@ -58,19 +66,20 @@ def minimal_ir(case: dict[str, object]) -> dict[str, object]:
 class PlatformProfileTests(unittest.TestCase):
     def test_new_profiles_are_complete(self) -> None:
         profiles = profile_catalog()["profiles"]
-        for profile_id in ("windows-fluent", "macos-hig", "android-tv"):
+        for profile_id in ("material3", "apple-hig", "windows-fluent", "macos-hig", "flutter-adaptive", "web-platform"):
             with self.subTest(profile=profile_id):
                 profile = profiles[profile_id]
                 self.assertTrue(profile["requirements"])
                 self.assertTrue(profile["requiredInteractionStates"])
-                self.assertTrue(profile["referenceUrls"])
+                if profile_id in {"windows-fluent", "macos-hig", "flutter-adaptive"}:
+                    self.assertTrue(profile["referenceUrls"])
 
     def test_platform_family_aliases(self) -> None:
         self.assertEqual(platform_family("winui3"), "windows")
         self.assertEqual(platform_family("appkit"), "macos")
-        self.assertEqual(platform_family("compose-tv"), "android-tv")
-        self.assertEqual(platform_family("react-native-windows"), "windows")
-        self.assertEqual(platform_family("react-native-macos"), "macos")
+        self.assertEqual(platform_family("flutter"), "flutter")
+        self.assertIsNone(platform_family("compose-tv"))
+        self.assertIsNone(platform_family("react-native-windows"))
 
     def test_platform_detection(self) -> None:
         for case in PLATFORM_CASES:
@@ -78,15 +87,16 @@ class PlatformProfileTests(unittest.TestCase):
                 self.assertIn(case["adapter"], detect_platforms(case["path"], str(case["source"])))
 
     def test_winui_window_is_not_misclassified_as_wpf(self) -> None:
-        detected = detect_platforms(PLATFORM_CASES[0]["path"], str(PLATFORM_CASES[0]["source"]))
+        case = next(item for item in PLATFORM_CASES if item["family"] == "windows")
+        detected = detect_platforms(case["path"], str(case["source"]))
         self.assertIn("windows-winui", detected)
         self.assertNotIn("windows-wpf", detected)
 
-    def test_leanback_and_react_native_desktop_adapters(self) -> None:
+    def test_removed_specific_platforms_are_not_detected(self) -> None:
         leanback = "import androidx.leanback.app.BrowseSupportFragment\nclass BrowseScreen : BrowseSupportFragment()"
-        self.assertIn("android-tv-leanback", detect_platforms(Path("BrowseScreen.kt"), leanback))
-        self.assertIn("react-native-windows", detect_platforms(Path("App.tsx"), "import { View } from 'react-native-windows';"))
-        self.assertIn("react-native-macos", detect_platforms(Path("App.tsx"), "import { View } from 'react-native-macos';"))
+        self.assertEqual(detect_platforms(Path("BrowseScreen.kt"), leanback), [])
+        self.assertEqual(detect_platforms(Path("App.tsx"), "import { View } from 'react-native-windows';"), [])
+        self.assertEqual(detect_platforms(Path("App.tsx"), "import { View } from 'react-native-macos';"), [])
 
     def test_adapter_and_profile_resolution(self) -> None:
         for case in PLATFORM_CASES:
@@ -97,24 +107,17 @@ class PlatformProfileTests(unittest.TestCase):
                 self.assertEqual(report["status"], "pass", report["issues"])
                 self.assertEqual(report["resolvedProfiles"][case["family"]]["id"], case["profile"])
 
-    def test_mobile_material_is_rejected_for_android_tv(self) -> None:
-        case = dict(PLATFORM_CASES[2])
-        case["profile"] = "material3"
-        report = validate_profiles(minimal_ir(case))
-        self.assertEqual(report["status"], "blocked")
-        self.assertIn("profile-invalid", {issue["code"] for issue in report["issues"]})
-
-    def test_scanner_builds_tv_starter_profile_and_viewport(self) -> None:
+    def test_scanner_builds_flutter_starter_profile_and_viewport(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            source = root / "TvHomeScreen.kt"
-            source.write_text(str(PLATFORM_CASES[2]["source"]), encoding="utf-8")
+            source = root / "HomePage.dart"
+            source.write_text("import 'package:flutter/widgets.dart';\nclass HomePage extends StatelessWidget { Widget build(context) { return Text('Home'); } }", encoding="utf-8")
             result = scan(root)
             ir = starter_ir(result)
-        self.assertIn("android-tv-compose", result["detectedPlatforms"])
-        self.assertEqual(ir["design"]["targetPlatforms"], ["android-tv"])
-        self.assertEqual(ir["design"]["standardProfiles"]["android-tv"]["id"], "android-tv")
-        self.assertEqual(ir["viewport"], {"width": 960, "height": 540, "device": "tv"})
+        self.assertIn("flutter", result["detectedPlatforms"])
+        self.assertEqual(ir["design"]["targetPlatforms"], ["flutter"])
+        self.assertEqual(ir["design"]["standardProfiles"]["flutter"]["id"], "flutter-adaptive")
+        self.assertEqual(ir["viewport"], {"width": 390, "height": 844, "device": "phone"})
 
 
 if __name__ == "__main__":

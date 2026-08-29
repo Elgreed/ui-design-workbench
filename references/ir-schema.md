@@ -170,13 +170,13 @@ The active theme is preserved in `?theme=<id>` and the Variants grouping in `?ax
 | Platform family | Default profile | Common scanner adapters | Standard-reference prefix |
 | --- | --- | --- | --- |
 | `android` | `material3` | `android-compose`, `android-views` | `material3.` |
-| `android-tv` | `android-tv` | `android-tv-compose`, `android-tv-views`, `android-tv-leanback` | `androidtv.` |
 | `ios` | `apple-hig` | `swiftui`, `uikit` | `apple.` |
-| `macos` | `macos-hig` | `swiftui-macos`, `appkit`, `mac-catalyst` | `macos.` |
+| `macos` | `macos-hig` | `swiftui-macos`, `appkit` | `macos.` |
 | `windows` | `windows-fluent` | `windows-winui`, `windows-wpf`, `windows-xaml` | `windows.` |
+| `flutter` | `flutter-adaptive` | `flutter` | `flutter.` |
 | `web` | `web-platform` | `web`, `react-web` | `web.` |
 
-Flutter and React Native adapters resolve to explicit target families; never infer one shared visual profile for all outputs. A TV screen uses a 16:9 reference viewport (`960×540` dp at mdpi) and records safe-content insets. Desktop screens record a resizable window viewport, not a fixed device frame. Use `standardRef` on every generated or redesigned control, for example `androidtv.Card`, `macos.Toolbar`, or `windows.NavigationView`.
+Only Android, iOS, macOS, Windows, Flutter, and Web are public platform families. Desktop screens record a resizable window viewport, not a fixed device frame. Use `standardRef` on every generated or redesigned control, for example `material3.Button`, `flutter.Text`, `macos.Toolbar`, or `windows.NavigationView`.
 
 An optional generated interaction plan lives at `review.scenarioPlan` and follows the output of `scripts/generate_interaction_matrix.py`. It is a bounded test plan, not an executed result. Store observations and `pass`/`fail` outcomes only in `review.audit.interactionChecks`. Machine-readable platform profile IDs and constraints come from [platform-profiles.json](platform-profiles.json); final quality artifacts follow [quality-automation.md](quality-automation.md).
 

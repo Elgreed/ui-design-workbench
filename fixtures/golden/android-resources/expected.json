@@ -1,0 +1,10 @@
+{
+  "screenText": "Projects",
+  "primary": "#123456",
+  "surface": "#FFFDF8",
+  "contentPadding": "16px",
+  "composeHorizontalPadding": "24px",
+  "composeVerticalPadding": "16px",
+  "shapeRadius": "12px",
+  "iconSize": "24px"
+}

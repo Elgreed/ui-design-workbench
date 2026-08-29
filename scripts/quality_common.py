@@ -45,16 +45,18 @@ def profile_catalog() -> dict[str, Any]:
 
 def platform_family(value: Any) -> str | None:
     platform = str(value or "").strip().lower()
-    if platform in {"android-tv", "android-tv-compose", "android-tv-views", "android-tv-leanback", "compose-tv", "leanback"} or "android-tv" in platform:
-        return "android-tv"
-    if platform in {"windows", "windows-winui", "windows-wpf", "windows-xaml", "winui", "winui3", "wpf", "windows-app-sdk", "react-native-windows"} or platform.startswith("windows-"):
+    if any(marker in platform for marker in ("android-tv", "compose-tv", "leanback", "react-native", "react_native", "mac-catalyst")):
+        return None
+    if platform in {"windows", "windows-winui", "windows-wpf", "windows-xaml", "winui", "winui3", "wpf", "windows-app-sdk"} or platform.startswith("windows-"):
         return "windows"
-    if platform in {"macos", "swiftui-macos", "appkit", "mac-catalyst", "react-native-macos"} or "macos" in platform:
+    if platform in {"macos", "swiftui-macos", "appkit"} or "macos" in platform:
         return "macos"
     if "android" in platform:
         return "android"
-    if platform in {"ios", "ipados", "swiftui", "uikit"} or "apple" in platform:
+    if platform in {"ios", "swiftui", "uikit"} or "apple" in platform:
         return "ios"
+    if platform == "flutter":
+        return "flutter"
     if platform in {"web", "react-web", "vue", "svelte"}:
         return "web"
     return None
@@ -77,8 +79,6 @@ def framework_adapters(ir: dict[str, Any]) -> set[str]:
             found.add(normalized)
         elif "flutter" in normalized:
             found.add("flutter")
-        elif "react-native" in normalized or "react_native" in normalized:
-            found.add("react-native")
     return found
 
 

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document targetRuntime="iOS.CocoaTouch">
+  <scenes><scene><objects>
+    <viewController id="resource-controller" customClass="ResourceViewController">
+      <view id="root-view">
+        <rect key="frame" x="0" y="0" width="390" height="844"/>
+        <subviews>
+          <label id="title-label" text="Project overview"><rect key="frame" x="20" y="40" width="240" height="28"/></label>
+          <imageView id="hero-image" image="Hero"><rect key="frame" x="20" y="84" width="120" height="80"/></imageView>
+        </subviews>
+        <constraints>
+          <constraint firstItem="hero-image" firstAttribute="width" constant="120" id="hero-width"/>
+          <constraint firstItem="hero-image" firstAttribute="centerX" secondItem="root-view" secondAttribute="centerX" id="hero-center-x"/>
+        </constraints>
+      </view>
+    </viewController>
+  </objects></scene></scenes>
+</document>
