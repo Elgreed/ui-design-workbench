@@ -44,12 +44,25 @@ Create the GitHub `pypi` environment if release approval should be required. The
 1. Move the target changes from `Unreleased` in `CHANGELOG.md` to a dated `X.Y.Z` section.
 2. Set the same version in `pyproject.toml` and `CLI_VERSION` in `scripts/uidw.py`.
 3. Run the tests and build checks locally.
-4. Commit the release state, create tag `vX.Y.Z`, and push the tag.
+4. Commit the release state and push that commit to `main`.
+5. Create an annotated `vX.Y.Z` tag on that exact release commit.
+6. Push the tag to `origin`. This tag push is what creates the `Release` GitHub Actions run.
+7. Confirm that the matching Actions run exists and wait for every release job to pass.
+8. Confirm that PyPI and the GitHub Release contain the same version and the expected artifacts.
 
 ```sh
-git tag v0.5.0
-git push origin v0.5.0
+VERSION=0.6.1
+git push origin main
+git tag -a "v${VERSION}" -m "UI Design Workbench ${VERSION}"
+git push origin "v${VERSION}"
+RUN_ID="$(gh run list --workflow Release --branch "v${VERSION}" --limit 1 --json databaseId --jq '.[0].databaseId')"
+test -n "${RUN_ID}"
+gh run watch "${RUN_ID}" --exit-status
+gh release view "v${VERSION}"
+python -m pip index versions ui-design-workbench-cli
 ```
+
+Do not stop after the version bump or the `main` push: neither event matches the workflow trigger. Do not manually create the GitHub Release before the workflow; the successful tag-triggered workflow creates it together with the wheel, source archive, and checksums. A release is complete only after the Actions run succeeds and both publication targets are verified.
 
 The tag starts one GitHub Actions workflow that:
 

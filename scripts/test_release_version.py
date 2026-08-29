@@ -43,6 +43,19 @@ class ReleaseVersionTests(unittest.TestCase):
         version = version_match.group(1)
         self.assertEqual(validate_release_version(root, f"v{version}"), [])
 
+    def test_repository_documents_mandatory_tag_driven_release_completion(self) -> None:
+        root = Path(__file__).resolve().parent.parent
+        agents = (root / "AGENTS.md").read_text(encoding="utf-8")
+        releasing = (root / "RELEASING.md").read_text(encoding="utf-8")
+        workflow = (root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+
+        self.assertIn("create an annotated `vX.Y.Z` tag", agents)
+        self.assertIn("verify that the tag created a `Release` GitHub Actions run", agents)
+        self.assertIn('git push origin "v${VERSION}"', releasing)
+        self.assertIn("test -n \"${RUN_ID}\"", releasing)
+        self.assertIn('gh run watch "${RUN_ID}" --exit-status', releasing)
+        self.assertIn('tags:\n      - "v*.*.*"', workflow)
+
 
 if __name__ == "__main__":
     unittest.main()

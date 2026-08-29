@@ -6,12 +6,15 @@ Not every historical version was published as a GitHub Release or package artifa
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-08-29
+
 ### Added
 
 - Stable `scopeHash` values and `if-none-match` support for reusing unchanged agent context without returning it again.
 
 ### Changed
 
+- Repository release instructions now require pushing an annotated version tag, verifying creation and successful completion of the tag-triggered GitHub Actions run, and checking both PyPI and GitHub Release artifacts before a release may be reported complete.
 - Model-facing screen scopes now summarize provenance by property and fetch full source expressions only through explicit fidelity requests.
 - CLI fallback routing now starts with bounded `scope` discovery instead of the larger project context.
 
