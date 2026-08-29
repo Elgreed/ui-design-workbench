@@ -222,13 +222,18 @@ def fidelity_report(ir: dict[str, Any]) -> dict[str, Any]:
         if node.get("confidence") == "unsupported":
             unsupported.append({"nodeId": node_id, "component": node.get("component"), "source": node.get("source", {})})
     baseline_valid, baseline_expected, baseline_actual = verify_baseline(ir)
+    fidelity_errors = [
+        *errors,
+        *(f"Node {item['nodeId']} is an unsupported placeholder" for item in unsupported),
+    ]
     return {
         "version": 1,
         "schemaVersion": schema_version or None,
         "applicable": applicable,
-        "status": "not-applicable" if not applicable else "pass" if not errors else "fail",
+        "status": "not-applicable" if not applicable else "pass" if not fidelity_errors else "fail",
         "applicabilityReason": None if applicable else f"Fidelity Core requires schema {FIDELITY_SCHEMA_VERSION}",
         "strictErrors": errors,
+        "fidelityErrors": fidelity_errors,
         "propertyProvenance": {"covered": sourced, "total": properties, "percent": round(100 * sourced / properties, 1) if properties else 100.0},
         "nodeConfidence": by_confidence,
         "unsupported": unsupported,

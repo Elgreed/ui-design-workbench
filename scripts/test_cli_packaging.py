@@ -19,7 +19,7 @@ from unittest import mock
 import coverage_report as coverage_module
 import uidw as uidw_module
 from render_preview import render_html
-from uidw import finding_report, help_topic, pack_artifact, prepare_agent_job, read_json, unpack_artifact, validate_artifact, write_json
+from uidw import finding_report, help_topic, install_skill, pack_artifact, prepare_agent_job, read_json, unpack_artifact, validate_artifact, write_json
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -139,6 +139,7 @@ class CliPackagingTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0)
         self.assertIn("review", completed.stdout)
         self.assertIn("apply", completed.stdout)
+        self.assertIn("install-skill", completed.stdout)
         self.assertNotIn("==SUPPRESS==", completed.stdout)
         self.assertNotIn("visual-test", completed.stdout)
 
@@ -185,15 +186,45 @@ class CliPackagingTests(unittest.TestCase):
     def test_console_entry_and_public_schemas_exist(self) -> None:
         config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         self.assertEqual(config["project"]["scripts"]["uidw"], "uidw:main")
-        for name in ("ui-graph.schema.json", "ui-agent-job.schema.json", "ui-ir.schema.json", "uidw-config.schema.json"):
+        self.assertEqual(config["project"]["scripts"]["uidw-mcp"], "uidw_mcp:main")
+        self.assertIn("mcp", config["project"]["optional-dependencies"])
+        for name in ("ui-graph.schema.json", "ui-agent-job.schema.json", "ui-ir.schema.json", "ui-ir.patch.schema.json", "uidw-config.schema.json"):
             schema = json.loads((ROOT / "schemas" / name).read_text(encoding="utf-8"))
             self.assertIn("$schema", schema)
+        data_files = config["tool"]["setuptools"]["data-files"]
+        self.assertIn("SKILL.md", data_files["share/ui-design-workbench"])
+        self.assertIn("references/*.md", data_files["share/ui-design-workbench/references"])
+        self.assertIn("scripts/uidw.py", data_files["share/ui-design-workbench/scripts"])
+
+    def test_packaged_skill_installs_and_updates_without_checkout_link(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "codex-skill"
+            installed = install_skill("codex", target=target, source=ROOT)
+            self.assertEqual(installed["skillInstallations"][0]["status"], "installed")
+            self.assertTrue((target / "SKILL.md").is_file())
+            self.assertTrue((target / "references" / "agent-integrations.md").is_file())
+            self.assertTrue((target / "schemas" / "ui-ir.schema.json").is_file())
+            self.assertTrue((target / "scripts" / "uidw.py").is_file())
+            self.assertEqual(read_json(target / ".uidw-skill.json", {})["cliVersion"], uidw_module.CLI_VERSION)
+
+            updated = install_skill("codex", target=target, source=ROOT)
+            self.assertEqual(updated["skillInstallations"][0]["status"], "updated")
+
+    def test_skill_installer_refuses_unmanaged_target(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "existing"
+            target.mkdir()
+            (target / "private.txt").write_text("keep", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "not UIDW-managed"):
+                install_skill("codex", target=target, source=ROOT)
+            self.assertEqual((target / "private.txt").read_text(encoding="utf-8"), "keep")
 
     def test_skill_is_thin_and_cli_first(self) -> None:
         skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
         self.assertLess(len(skill.splitlines()), 120)
         self.assertIn("uidw --repo <repo> context --json", skill)
         self.assertIn("The CLI, not the skill prompt, owns scanning", skill)
+        self.assertIn("ui-ir.patch.json", skill)
         self.assertIn("metadata:", skill)
         self.assertIn("compatibility:", skill)
 
@@ -259,6 +290,8 @@ class CliPackagingTests(unittest.TestCase):
         self.assertNotIn('class="review-launcher-action primary run-review"', generic)
         self.assertNotIn("open-codex-review", generic)
         self.assertNotIn("codex-handoff-panel", generic)
+        self.assertNotIn("uiIr:ir", generic)
+        self.assertIn("ui-ir.patch.json", generic)
 
     def test_portable_bundle_round_trip_has_no_absolute_source_paths(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

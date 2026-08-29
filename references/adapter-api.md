@@ -12,7 +12,7 @@ The built-in v0.3 adapters are:
 - `react-jsx`, `vue`, `svelte`: source markup projected through the Web contract; dynamic expressions and unmapped project components remain unsupported;
 - `react-native`: supported core JSX elements without executing JavaScript; generic projects still require an explicit Android/iOS target family;
 - `compose`: `@Composable` screens, common Material/Compose primitives, literal text, basic modifiers, tokens, and Android TV family/focus specialization;
-- `android-xml`: Android layout/resources XML, common Views/Material controls, dimensions/colors, and `values-night` token overrides;
+- `android-xml`: Android navigation destinations/actions, Activity/Fragment/Dialog-to-layout evidence (including inherited base layouts), Data Binding wrapper stripping, static `<include>` expansion, common Views/Material controls, string/color/dimension resources, color selectors, qualifier variants, and `values-night` token overrides. Cells/items/partials are component inventory rather than screens. The adapter does not execute bindings, custom views, constraint equations, styles/theme attributes, or runtime-injected content, so these remain explicit unsupported evidence and visual parity stays unverified;
 - `swiftui`: `View` bodies, common containers and controls, literal content, basic modifiers, and source tokens for iOS or macOS;
 - `apple-interface-xml`: Storyboard/XIB controllers and common UIKit/AppKit views with authored frames; it does not solve Auto Layout;
 - `xaml`: WinUI/WPF pages, common controls, resources, and basic layout/style attributes without evaluating bindings or templates;

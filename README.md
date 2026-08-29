@@ -1,295 +1,146 @@
 # UI Design Workbench
 
-[Русская версия](README.ru.md)
+[Русская версия](README.ru.md) · [Changelog](CHANGELOG.md) · [Release guide](RELEASING.md)
 
-UI Design Workbench turns UI source code into an offline interactive HTML workbench. It finds screens, navigation, components, themes, and states without running the application, build, dev server, emulator, or simulator.
+Turn repository UI source into an offline, interactive HTML workbench—without building or running the application.
 
 ```text
-repository UI → cached UI map → strict ui-ir.json → interactive ui-preview.html
+UI source → cached UI map → strict UI IR → interactive HTML
 ```
 
-The CLI is provider-neutral. The included Agent Skill teaches Codex, Claude Code, Cursor, Gemini CLI, Copilot CLI, OpenCode, and other filesystem-capable agents how to use it.
+Use it to understand an unfamiliar UI, inspect screens and navigation, compare a proposal with the source-derived baseline, or run an explicit UI/UX review.
 
-## Why this tool exists
+## What you get
 
-A typical AI UI task starts with a few source files or screenshots. The agent may miss hidden screens, repeatedly rescan the repository, invent unsupported styling, or edit production code before the result can be reviewed. Checking the result usually requires running the application or assembling screenshots manually.
+- A reusable inventory of screens, routes, components, tokens, themes, and states.
+- An interactive HTML prototype with source links and declared navigation.
+- Incremental scans: unchanged UI files are not analyzed again.
+- Traceable reconstruction: unsupported source is reported instead of guessed.
+- A safe review flow: project source stays read-only until a separate apply step.
 
-UI Design Workbench adds a deterministic layer between source code and AI decisions:
+Supported sources include Web, React, Vue, Svelte, Jetpack Compose, Android Views XML, SwiftUI, Storyboard/XIB, WinUI/WPF, Flutter, and React Native.
 
-| Typical workflow without the workbench | With UI Design Workbench |
-| --- | --- |
-| The agent reads whichever UI files it finds first | The scanner builds a reusable inventory of screens, routes, components, tokens, themes, and states |
-| Hidden routes, tabs, drawers, or admin screens may be missed | Every discovered screen is placed once in a hierarchical screen tree |
-| UI is recreated from memory or generic HTML controls | The preview is generated from strict IR with source mappings and project tokens |
-| The app, emulator, simulator, or dev server is needed to inspect flows | A standalone HTML prototype shows screens and declared transitions offline |
-| The repository is rescanned in later tasks | Content-addressed cache refreshes only changed UI files |
-| The AI may mix reconstruction with unsolicited redesign advice | Projection checks and UI/UX review are separate explicit operations |
-| Production UI files may change before visual approval | Proposals live in the workbench first; project edits require a separate apply authorization |
-| Before/After and comments are spread across chat and screenshots | Versions, comparisons, findings, and anchored comments stay in one artifact |
-| Platform conventions depend on the current prompt | Optional profiles provide consistent Android, Android TV, Apple, Windows, and Web guidance |
+## Install
 
-Use it when you need to understand an unfamiliar UI codebase, inspect all screens without running it, create an interactive design artifact, compare a redesign safely, or perform a deliberate platform-aware review. It is not a replacement for final testing in the real application.
+Requirements: Python 3.10+. A local AI agent is optional. Node.js and Chrome/Edge/Chromium are also optional and enable full browser diagnostics.
 
-## Important behavior
-
-- `uidw workbench` and `uidw check` validate reconstruction and HTML behavior only. They do not judge the product UI or create UI/UX findings.
-- `uidw review` is the only command that starts a UI/UX audit. Use it only when a review is explicitly wanted.
-- Rendering, review, and proposals keep application source read-only.
-- Source changes require a separate authorized apply job.
-- Generated HTML is standalone and requires no local server.
-- Review state is tied to the target revision and can be explicitly saved/restored from File; opening or checking a preview never downloads it automatically.
-- Runtime findings are versioned by diagnostics engine and replaced on rerun, so fixed checks cannot remain as stale problems.
-
-## Main features
-
-- Complete screen and route inventory with a hierarchical screen tree.
-- Interactive prototype navigation using reconstructed controls.
-- Single-screen, all-screens, variants, and dedicated comparison views.
-- Separate theme and state dropdowns; light/dark/custom themes appear only when found in source.
-- Deterministic mock data, including repeated items for lists, tables, grids, and collections.
-- Shared-canvas zoom, middle-button panning, resizable panels, inspection, and anchored comments.
-- Optional UI/UX review with stable numbered findings and Before/After proposals.
-- Property-level source provenance, strict IR validation, token resolution, and immutable baselines.
-- Platform profiles for Android, Android TV, iOS/iPadOS, macOS, Windows, Web, Flutter, and React Native.
-- Incremental source cache to avoid repeated repository-wide scans and reduce token use.
-- Russian and English workbench chrome.
-
-## Requirements
-
-- Python 3.10 or newer.
-- Git.
-- A local AI agent with filesystem and shell access.
-- Optional: Node.js and Chrome, Edge, or Chromium for headless HTML checks.
-- Optional: Pillow for pixel regression.
-
-The target application's runtime and SDK are not required for preview generation.
-
-## Installation
-
-Clone the repository first:
-
-```sh
-git clone https://github.com/Elgreed/ui-design-workbench.git
-cd ui-design-workbench
-```
-
-### Windows 10/11
+Install `pipx` once if it is not already available:
 
 ```powershell
 py -m pip install --user pipx
 py -m pipx ensurepath
-py -m pipx install .
-.\install.ps1 -Agent codex
 ```
-
-Replace `codex` with `claude`, `cursor`, `gemini`, `copilot`, `opencode`, `agents`, or `all` when needed.
-
-If PowerShell blocks the installer:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Agent codex
-```
-
-### macOS and Linux
 
 ```sh
 python3 -m pip install --user pipx
 python3 -m pipx ensurepath
-python3 -m pipx install .
-sh ./install.sh codex
 ```
 
-Replace `codex` with another supported agent or `all`.
+Then install the CLI and its Agent Skill—no repository clone is needed:
 
-Restart the selected agent or open a new session, then verify the installation:
+```sh
+pipx install ui-design-workbench-cli
+uidw install-skill codex
+```
+
+Replace `codex` with `claude`, `cursor`, `gemini`, `copilot`, `opencode`, `agents`, or `all`.
+
+Before the first PyPI release, install the same package directly from the GitHub archive:
+
+```sh
+pipx install "https://github.com/Elgreed/ui-design-workbench/archive/refs/heads/main.zip"
+uidw install-skill codex
+```
+
+For optional local MCP support:
+
+```sh
+pipx inject ui-design-workbench-cli "mcp>=2,<3"
+```
+
+Verify the installation:
 
 ```sh
 uidw --version
-uidw --json doctor
+uidw doctor
 ```
 
-Without installation, run `python scripts/uidw.py` on Windows or `python3 scripts/uidw.py` on macOS/Linux.
+Upgrade both the CLI and its installed skill with:
+
+```sh
+pipx upgrade ui-design-workbench-cli
+uidw install-skill codex
+```
+
+A Windows `.exe` is not published yet; it remains a future convenience artifact, not the primary package format. See [RELEASING.md](RELEASING.md).
 
 ## Quick start
 
-### 1. Choose preview detail
+Choose the amount of preview detail once:
 
 ```sh
 uidw --repo <repo> config setup
 ```
 
-| Level | Includes |
-| --- | --- |
-| `low` | Screens, basic layout, minimal mock data |
-| `medium` | Low plus navigation, interactions, relevant states, representative data |
-| `high` | Medium plus expanded data, detected themes, variant boards, exhaustive reconstruction/HTML checks |
-
-Mock data is always enabled. Its depth follows the selected level. No level starts UI/UX review.
-
-### 2. Build the HTML workbench
+Build and open a source-derived workbench:
 
 ```sh
-uidw --repo <repo> workbench --output-dir <artifacts> --level full --open --view overview --lang en
+uidw --repo <repo> workbench --output-dir <artifacts> --level full --open
 ```
 
-The first run creates the UI index, graph, and starter IR. Later runs reuse the cache and rescan only changed UI files.
-
-### 3. Inspect one screen or prototype navigation
+Open one screen or follow the reconstructed navigation:
 
 ```sh
-uidw --repo <repo> open <artifacts>/ui-preview.html --launch --view single --screen <screen-id> --lang en
-uidw --repo <repo> open <artifacts>/ui-preview.html --launch --view prototype --screen <screen-id> --lang en
+uidw --repo <repo> open <artifacts>/ui-preview.html --launch --view single --screen <screen-id>
+uidw --repo <repo> open <artifacts>/ui-preview.html --launch --view prototype --screen <screen-id>
 ```
 
-The workbench uses the reconstructed UI controls. It does not replace them with browser-default buttons or inputs.
-
-## Preview views
-
-| View | Purpose |
-| --- | --- |
-| All screens | Browse every discovered screen on one canvas |
-| Prototype | Follow declared navigation by clicking reconstructed controls |
-| Single screen | Inspect one screen without navigation changing the view |
-| Variants | Compare themes or states, or show a grouped theme/state matrix |
-| Compare | Compare two explicit versions side by side or as an overlay |
-
-Theme and state dropdowns remain separate. In Matrix view they select the current combination without hiding the other variants. Zoom affects mockups, not the variant controls.
-
-## UI/UX review
-
-Run review only when it is explicitly needed:
+Run UI/UX review only when you want product critique and proposals:
 
 ```sh
-uidw --repo <repo> review --output-dir <review-dir> --level full --lang en
+uidw --repo <repo> review --output-dir <review-dir> --level full
 ```
 
-The review flow is:
+`workbench` and `check` validate the reconstruction. Only `review` starts a UI/UX audit.
 
-1. Run the audit.
-2. Select findings to address.
-3. Generate one restrained proposal, or two only when a real UX trade-off exists.
-4. Compare the immutable Before version with the proposal.
-5. Approve the proposal.
-6. Prepare an apply job for the real project.
-7. Run targeted verification after implementation.
-
-Review findings are always bound to the immutable reviewed version. Proposal versions may describe which findings they address, but a finding is complete only after the project change passes targeted verification.
-
-Use `Save review` and `Restore review` in File for a portable backup. Browser storage still restores unchanged reviews automatically, while incompatible technical diagnostics are recomputed without discarding human decisions or comments.
-
-The CLI prepares portable agent jobs; it does not silently launch an AI provider or edit project source.
-
-Useful review commands:
-
-```sh
-uidw findings list --ir <review-dir>/ui-ir.json
-uidw findings accept 7 25 --ir <review-dir>/ui-ir.json
-uidw proposal prepare --ir <review-dir>/ui-ir.json
-uidw apply prepare --ir <review-dir>/ui-ir.json
-uidw apply prepare --direct --ir <review-dir>/ui-ir.json
-```
-
-`--direct` is an explicit fast path that skips proposal approval. Use it only when that behavior is intended.
-
-## Cache and token use
-
-Manual `init` is optional. `context`, `workbench`, and `review` initialize the project cache when required.
-
-```sh
-uidw --repo <repo> status
-uidw --repo <repo> sync
-uidw --repo <repo> diff
-uidw --repo <repo> context --screen <screen-id> --budget 4000
-```
-
-By default, derived state is stored in the operating-system user cache, not in the project or installed skill. Content hashes invalidate only changed UI files. Set `UIDW_CACHE_HOME` to override the cache root.
-
-## Optional platform guidance
-
-Platform guidance for ordinary UI implementation tasks is off by default:
-
-```sh
-uidw --repo <repo> ui-mode --enable
-uidw --repo <repo> ui-mode --disable
-```
-
-When enabled, the agent uses existing project components and the detected platform conventions for the requested change. It does not scan unrelated UI or start a review automatically.
-
-## Fidelity Core
-
-Fidelity Core makes reconstruction evidence inspectable:
-
-```sh
-uidw fidelity capabilities
-uidw fidelity report --ir <artifacts>/ui-ir.json
-uidw fidelity explain <node-id-or-evidence-id> --ir <artifacts>/ui-ir.json
-```
-
-Built-in adapters cover HTML/CSS, React/JSX, Vue, Svelte, Jetpack Compose, Android Views XML, SwiftUI, Storyboard/XIB, WinUI/WPF XAML, Flutter, and React Native. Unsupported syntax is reported instead of being replaced with invented UI.
-
-Flutter and React Native require an explicit target platform before platform-specific UX conclusions can be made.
-
-## Common commands
+## Main commands
 
 | Command | Purpose |
 | --- | --- |
-| `uidw doctor` | Check installation and optional dependencies |
-| `uidw --repo <repo> context --json` | Return compact cached project context |
-| `uidw --repo <repo> workbench ...` | Build and validate the HTML projection |
-| `uidw --repo <repo> check --ir <file> --level full` | Repeat projection checks without UI/UX audit |
-| `uidw --repo <repo> review ...` | Explicitly start UI/UX review |
-| `uidw --repo <repo> scenarios validate --ir <file>` | Validate screen scenarios and populated collections |
-| `uidw pack --ir <file> --output review.uidw.zip` | Create a portable artifact bundle |
-| `uidw unpack review.uidw.zip --output-dir <dir>` | Unpack a portable bundle |
-| `uidw help config` | Explain configuration |
-| `uidw help advanced` | List advanced commands |
+| `uidw doctor` | Check the installation and optional dependencies |
+| `uidw --repo <repo> context --json` | Read compact cached project context |
+| `uidw --repo <repo> workbench ...` | Build and validate the HTML workbench |
+| `uidw --repo <repo> check ...` | Re-run projection checks without UI/UX review |
+| `uidw --repo <repo> review ...` | Start an explicit UI/UX review |
+| `uidw --repo <repo> scope ...` | Prepare bounded context for one screen or finding |
+| `uidw --repo <repo> patch ...` | Validate or apply sparse review-artifact changes |
+| `uidw --repo <repo> fidelity ...` | Inspect source evidence and adapter limits |
+| `uidw --repo <repo> mcp` | Start the optional local stdio MCP server |
 
-## AI-agent installation targets
+Run `uidw help overview`, `uidw help advanced`, or `uidw <command> --help` for details.
 
-| Agent | Installer value | Skill directory |
-| --- | --- | --- |
-| Codex | `codex` | `~/.codex/skills/ui-design-workbench` |
-| Claude Code | `claude` | `~/.claude/skills/ui-design-workbench` |
-| Cursor | `cursor` | `~/.cursor/skills/ui-design-workbench` |
-| Gemini CLI | `gemini` | `~/.gemini/skills/ui-design-workbench` |
-| GitHub Copilot CLI | `copilot` | `~/.copilot/skills/ui-design-workbench` |
-| OpenCode | `opencode` | `~/.config/opencode/skills/ui-design-workbench` |
-| Generic local agent | `agents` | `~/.agents/skills/ui-design-workbench` |
+## Accuracy and safety
 
-For an agent without skill discovery, use this minimal instruction:
+- The HTML is a static source projection, not proof of runtime or pixel parity.
+- Unsupported bindings, custom drawing, runtime data, and unresolved platform behavior remain explicit gaps.
+- Android XML reconstruction does not execute Data Binding, custom views, constraints, or theme inheritance. Visual parity requires Layoutlib, emulator screenshots, or golden-image evidence.
+- Review artifacts never authorize source changes. Applying a proposal is a separate, explicit step.
+- Derived cache and review state live outside the target repository by default.
 
-```text
-Use UI Design Workbench as the deterministic UI engine. Start with:
-uidw --repo <repo> context --json
-Do not run the application. Build or review in a separate artifact directory.
-Do not edit project source unless an apply job explicitly sets sourceChangeAllowed: true.
-```
+## Agent and MCP integration
 
-## More documentation
+The bundled Agent Skill teaches filesystem-capable agents to use the CLI as the deterministic engine. For large reviews, `scope` returns a structurally complete bounded context and `patch` accepts only sparse review operations; agents do not need the full IR.
 
+The optional `uidw-mcp` server exposes the same bounded operations over local stdio. It opens no port, and the regular CLI remains the complete fallback.
+
+## Documentation
+
+- [Changelog](CHANGELOG.md)
+- [Release and distribution guide](RELEASING.md)
 - [Agent integrations](references/agent-integrations.md)
-- [Cache protocol](references/cache-protocol.md)
-- [Fidelity and reconstruction](references/fidelity.md)
+- [Fidelity contract](references/fidelity.md)
 - [IR schema](references/ir-schema.md)
-- [Platform standards](references/platform-standards.md)
 - [Review workflow](references/review-workflow.md)
-- [Validation](references/validation.md)
-- [Workbench UI](references/workbench-ui.md)
+- [Validation contract](references/validation.md)
 
-## Repository layout
-
-```text
-SKILL.md                    Agent workflow adapter
-scripts/uidw.py             Main CLI
-scripts/scan_ui.py          Incremental source scanner
-scripts/render_preview.py   Standalone HTML renderer
-scripts/smoke_preview.js    Headless workbench checks
-scripts/verify_workbench_goldens.py  Review-panel visual regression gate
-schemas/                    JSON schemas
-references/                 Behavior and platform contracts
-fixtures/golden/            Adapter and workbench-shell regression fixtures
-```
-
-## Version
-
-Current CLI version: `0.3.4`.
+Development version: `0.3.5` (not yet published). See [CHANGELOG.md](CHANGELOG.md).

@@ -227,8 +227,9 @@ async function main() {
           && document.querySelector('.review-next-action')?.textContent?.includes(String(bulkSelected));
         state.findingDecisions = decisionsBeforeBulk;
         renderFindings();
-        const actionableChecks = (state.diagnostics?.checks || []).filter(item => item.result !== 'pass').length;
-        const actionableGroups = groupDiagnosticChecks((state.diagnostics?.checks || []).filter(item => item.result !== 'pass')).length;
+        const isProductFinding = item => item.result !== 'pass' && item.metrics?.scope !== 'workbench';
+        const actionableChecks = (state.diagnostics?.checks || []).filter(isProductFinding).length;
+        const actionableGroups = groupDiagnosticChecks((state.diagnostics?.checks || []).filter(isProductFinding)).length;
         const totalAfter = Number(document.querySelector('.finding-total')?.textContent || 0);
         const autoReviewFindings = state.runtimeFindings.length;
         const selected = selectedFindings().length;
@@ -594,16 +595,19 @@ async function main() {
           && [...document.querySelectorAll('[data-inspector-pane]')].filter(pane => !pane.hidden).length === 1;
 
         const search = document.querySelector('.screen-search');
+        const searchProbe = [...document.querySelectorAll('.screen-link')].at(-1)?.textContent?.trim() || '';
         if (search) {
-          search.value = 'узкое';
+          search.value = searchProbe;
           search.dispatchEvent(new Event('input', { bubbles: true }));
         }
         const treeSearchWorks = [...document.querySelectorAll('.screen-link:not([hidden])')]
-          .some(button => button.textContent.toLocaleLowerCase().includes('узкое'));
+          .some(button => button.textContent.trim() === searchProbe);
         if (search) {
           search.value = '';
           search.dispatchEvent(new Event('input', { bubbles: true }));
         }
+        const evidenceEdges = (ir.navigationGraph?.edges || []).filter(edge => edge.kind === 'open-logical-view');
+        const nestedTreeWorks = evidenceEdges.every(edge => (treePaths[edge.to]?.length || 0) > (treePaths[edge.from]?.length || 0));
 
         let compactPanelsExclusive = true;
         if (innerWidth <= 980) {
@@ -640,13 +644,15 @@ async function main() {
           agentReviewButtonEnabled: document.querySelector('.open-agent-review')?.disabled === false,
           expertReviewButtonEnabled: document.querySelector('.export-review-request')?.disabled === false,
           expertRequestValid: expertRequest?.type === 'ui-design-workbench-expert-review-request'
-            && expertRequest?.runtimeDiagnostics?.status === 'complete'
+            && expertRequest?.diagnosticsSummary?.status === 'complete'
             && expertRequest?.activeVersion === baselineVersion
             && expertRequest?.reviewVersionId === baselineVersion
             && expertRequest?.screenIds?.length === screens.length
+            && expertRequest?.contextFile?.endsWith('ui-agent-context.json')
+            && expertRequest?.patchFile?.endsWith('ui-ir.patch.json')
             && expertRequest?.requiredChatReport?.includes('plain numbered list')
-            && expertRequest?.requiredChatReport?.includes('Do not add a duplicate plain-text report to the HTML')
-            && expertRequest?.uiIr?.screens?.length === screens.length,
+            && expertRequest?.requiredChatReport?.includes('Do not duplicate it as plain text in HTML')
+            && expertRequest?.expectedResult?.type === 'ui-design-workbench-ir-patch',
           expertHandoffValid: expertHandoff?.supported === true
             && expertHandoff?.provider === 'generic'
             && expertHandoff?.url === null
@@ -661,8 +667,9 @@ async function main() {
           implementationHandoffValid: implementationHandoff?.supported === true
             && implementationHandoff?.context?.sourceChangeAllowed === true
             && Boolean(implementationHandoff?.context?.projectRoot)
-            && implementationHandoff?.prompt?.includes('В ЧАТЕ')
-            && implementationHandoff?.prompt?.includes('Не запускай полное AI-ревью автоматически'),
+            && implementationHandoff?.context?.contextFile?.endsWith('ui-agent-context.json')
+            && implementationHandoff?.prompt?.includes('contextFile')
+            && implementationHandoff?.prompt?.includes('не запускай новое полное ревью'),
           directFixEntryPoint,
           handoffPanelWorks,
           contextProposalAction,
@@ -719,8 +726,9 @@ async function main() {
           applyOnlyOnFixStep,
           sourceApprovalGuard: sourceRequest?.sourceChangeAllowed === true
             && Boolean(sourceRequest?.projectRoot)
+            && sourceRequest?.contextFile?.endsWith('ui-agent-context.json')
             && Array.isArray(sourceRequest?.requiredChatReport)
-            && sourceRequest?.requestedAction?.includes('do not run a full AI review'),
+            && sourceRequest?.requestedAction?.includes('never repeat the full AI review automatically'),
           revisionVisible,
           selectionPreserved,
           scrollPreserved,
@@ -728,6 +736,7 @@ async function main() {
           commentsTabWorks,
           reviewTabWorks,
           treeSearchWorks,
+          nestedTreeWorks,
           compactPanelsExclusive,
         };
       })()`,
@@ -762,7 +771,7 @@ async function main() {
       || !workflow.sourceApprovalGuard || !workflow.revisionVisible
       || !workflow.selectionPreserved || !workflow.scrollPreserved
       || !workflow.inspectTabWorks || !workflow.commentsTabWorks || !workflow.reviewTabWorks
-      || !workflow.treeSearchWorks || !workflow.compactPanelsExclusive
+      || !workflow.treeSearchWorks || !workflow.nestedTreeWorks || !workflow.compactPanelsExclusive
     )) {
       throw new Error(`Review workflow smoke failed: ${JSON.stringify(workflow)}`);
     }
@@ -937,9 +946,9 @@ async function main() {
     }
     if (args.output) fs.writeFileSync(path.resolve(args.output), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
     const summary = report.summary || {};
-    console.log(`${args.mode === 'review' ? 'Review' : 'Projection'} diagnostics complete: pass=${summary.pass || 0} warning=${summary.warning || 0} fail=${summary.fail || 0} checks=${report.checks?.length || 0}`);
+    console.log(`${args.mode === 'review' ? 'Review' : 'Projection'} diagnostics complete: product-warning=${summary.productWarning ?? summary.warning ?? 0} product-fail=${summary.productFail ?? summary.fail ?? 0} tool-warning=${summary.toolWarning || 0} tool-fail=${summary.toolFail || 0} checks=${report.checks?.length || 0}`);
     if (args.mode === 'review' && !args.captureOnly) console.log(`Review workflow: findings=${workflow.totalAfter || 0} auditLinks=${workflow.auditLinks || 0} selected=${workflow.selected || 0} requestFindings=${workflow.requestFindings || 0} profiles=${fixedProfiles.length}`);
-    if (args.failOnFindings && (summary.fail || 0) > 0) process.exitCode = 1;
+    if (args.failOnFindings && (summary.productFail ?? summary.fail ?? 0) > 0) process.exitCode = 1;
   } finally {
     try { await Promise.race([cdp?.call('Browser.close'), delay(1500)]); } catch (_) {}
     try { socket?.close(); } catch (_) {}

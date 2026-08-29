@@ -9,7 +9,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from quality_common import read_json, walk_tree_screen_ids, write_json
+from quality_common import hierarchy_issues, navigation_graph_issues, read_json, walk_tree_screen_ids, write_json
 from render_preview import fidelity_audit
 from validate_platform_profiles import validate_profiles
 
@@ -32,14 +32,21 @@ def build_report(ir: dict[str, Any], purpose: str = "projection") -> dict[str, A
     missing_tree = sorted(set(screen_ids) - set(tree_ids))
     duplicate_tree = sorted(item for item, count in tree_counts.items() if count > 1)
     unknown_tree = sorted(set(tree_ids) - set(screen_ids))
+    hierarchy = hierarchy_issues(ir)
+    graph_issues = navigation_graph_issues(ir)
     mode = ir.get("design", {}).get("mode", "reconstruct")
     needs_design_evidence = purpose == "review" and mode in {"generate", "redesign"}
     needs_source = mode == "reconstruct"
+    visual_verification = ir.get("visualVerification", {}) if isinstance(ir.get("visualVerification"), dict) else {}
+    visual_status = str(visual_verification.get("status") or "unverified")
 
     gates = [
         gate("fidelity", "Renderer fidelity audit", audit.get("status") == "reviewable", audit.get("status"), "reviewable", audit.get("reasons")),
         gate("screen-tree", "Every screen appears once in screenTree", not missing_tree and not duplicate_tree and not unknown_tree, len(tree_ids), len(screen_ids), {"missing": missing_tree, "duplicates": duplicate_tree, "unknown": unknown_tree}),
-        gate("screens", "Discovered screen coverage", audit.get("screenCoverage", 0) == 1, audit.get("screenCoverage", 0), 1, audit.get("missingScreens")),
+        gate("screen-hierarchy", "screenTree preserves source navigation hierarchy", not hierarchy, len(hierarchy), 0, hierarchy),
+        gate("navigation-graph", "Source navigation graph covers nested logical views", not graph_issues, len(graph_issues), 0, graph_issues),
+        gate("screens", "Translated screen coverage", audit.get("screenCoverage", 0) == 1, audit.get("screenCoverage", 0), 1, audit.get("missingScreens")),
+        gate("screen-accountability", "Discovered screens translated or explicitly excluded", audit.get("screenAccountabilityCoverage", 0) == 1, audit.get("screenAccountabilityCoverage", 0), 1, audit.get("missingScreens")),
         gate("routes", "Discovered route coverage", audit.get("routeCoverage", 0) == 1, audit.get("routeCoverage", 0), 1, audit.get("missingRoutes")),
         gate("navigation", "Discovered navigation coverage", audit.get("navigationCoverage", 0) == 1, audit.get("navigationCoverage", 0), 1, audit.get("missingNavigationTargets")),
         gate("components", "Mapped component coverage", audit.get("componentCoverage", 0) == 1, audit.get("componentCoverage", 0), 1),
@@ -65,6 +72,11 @@ def build_report(ir: dict[str, Any], purpose: str = "projection") -> dict[str, A
         "project": ir.get("project", {}).get("name", "Project"),
         "designMode": mode,
         "purpose": purpose,
+        "verification": {
+            "sourceProjection": "pass" if audit.get("status") == "reviewable" else "blocked",
+            "visualParity": visual_status,
+            "reason": visual_verification.get("reason") or (None if visual_status != "unverified" else "No Layoutlib, emulator screenshot, or golden-image comparison was supplied."),
+        },
         "summary": {"passed": len(gates) - len(failed), "failed": len(failed), "total": len(gates)},
         "inventory": {
             "screens": len(screen_ids),

@@ -8,6 +8,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
+from android_xml_support import android_layout_metadata
 from fidelity_adapter_api import AdapterResult, SourceContext
 from fidelity_core import property_evidence
 
@@ -61,10 +62,11 @@ def _normalize_ref(value: str, preferred_group: str = "spacing") -> Any:
     if numeric: return float(value) if "." in value else int(value)
     dimension = re.fullmatch(r"(-?\d+(?:\.\d+)?)(?:dp|sp|pt)", value)
     if dimension: return f"{dimension.group(1)}px"
-    match = re.fullmatch(r"@(?:color|dimen|string)/([\w.-]+)", value)
+    match = re.fullmatch(r"@(color|dimen|string)/([\w.-]+)", value)
     if match:
-        group = "colors" if value.startswith("@color/") else preferred_group
-        return f"${group}.{_slug(match.group(1)).replace('-', '_')}"
+        resource_type, resource_name = match.groups()
+        group = "colors" if resource_type == "color" else "strings" if resource_type == "string" else preferred_group
+        return f"${group}.{_slug(resource_name).replace('-', '_')}"
     match = re.fullmatch(r"\{(?:StaticResource|ThemeResource)\s+([\w.-]+)\}", value)
     if match:
         return f"${preferred_group}.{_slug(match.group(1)).replace('-', '_')}"
@@ -94,12 +96,26 @@ class AndroidXmlAdapter:
     platforms = ("android", "android-tv")
     extensions = (".xml",)
     maturity = "golden"
-    limitations = ("custom views are not expanded", "constraint equations are preserved only as unsupported source")
+    limitations = (
+        "custom views and include resources are preserved as unsupported source evidence",
+        "constraint equations and Data Binding expressions are not executed",
+        "theme/style inheritance is not resolved without Android resource tooling",
+    )
     TYPES = {
-        "LinearLayout": "container", "ConstraintLayout": "container", "FrameLayout": "container", "CoordinatorLayout": "container",
-        "ScrollView": "container", "HorizontalScrollView": "container", "RecyclerView": "list", "ListView": "list", "GridView": "list",
-        "TextView": "text", "MaterialTextView": "text", "Button": "button", "MaterialButton": "button", "EditText": "input",
-        "TextInputEditText": "input", "ImageView": "image", "ImageButton": "button", "CardView": "card", "MaterialCardView": "card", "View": "divider",
+        "LinearLayout": "container", "ConstraintLayout": "container", "FrameLayout": "container", "RelativeLayout": "container",
+        "CoordinatorLayout": "container", "AppBarLayout": "container", "Toolbar": "container", "MaterialToolbar": "container",
+        "ScrollView": "container", "NestedScrollView": "container", "HorizontalScrollView": "container", "ViewPager": "container",
+        "ViewPager2": "container", "SwipeRefreshLayout": "container", "DrawerLayout": "container", "NavigationView": "container",
+        "RecyclerView": "list", "ListView": "list", "GridView": "list", "TabLayout": "container",
+        "TextView": "text", "AppCompatTextView": "text", "MaterialTextView": "text", "Button": "button",
+        "AppCompatButton": "button", "MaterialButton": "button", "FloatingActionButton": "button", "ExtendedFloatingActionButton": "button",
+        "EditText": "input", "AppCompatEditText": "input", "TextInputEditText": "input", "TextInputLayout": "container",
+        "CheckBox": "button", "RadioButton": "button", "Switch": "button", "SwitchMaterial": "button", "Chip": "button",
+        "MaterialCheckBox": "button", "MaterialSwitch": "button", "CheckedTextView": "button", "RadioGroup": "container",
+        "MaterialButtonToggleGroup": "container", "GridLayout": "container", "ShimmerFrameLayout": "container", "SearchView": "input",
+        "ImageView": "image", "AppCompatImageView": "image", "ShapeableImageView": "image", "ImageButton": "button",
+        "AppCompatImageButton": "button", "CardView": "card", "MaterialCardView": "card", "View": "divider", "Space": "spacer",
+        "ProgressBar": "custom", "Guideline": "spacer", "Barrier": "spacer", "Group": "container",
     }
 
     def supports(self, context: SourceContext) -> bool:
@@ -112,68 +128,200 @@ class AndroidXmlAdapter:
         except ET.ParseError as exc:
             result.unsupported.append({"adapter": self.id, "file": context.source, "line": getattr(exc, "position", (1,))[0], "expression": str(exc), "reason": "invalid-xml"})
             return result
+        normalized_source = "/" + context.source.lower().replace("\\", "/")
+        if "/res/color" in normalized_source:
+            items = [child for child in root if _local(child.tag) == "item"] if _local(root.tag) == "selector" else []
+            default_item = next((child for child in reversed(items) if not any(key.startswith("state_") for key in _attrs(child))), None)
+            selected = default_item if default_item is not None else items[-1] if items else root
+            value = _attrs(selected).get("color") or (selected.text or "").strip()
+            if value:
+                result.tokens["colors"][_slug(context.path.stem).replace("-", "_")] = {
+                    "value": _normalize_ref(value, "colors"),
+                    "source": {"file": context.source, "line": _line(context.text, value)},
+                    "adapter": self.id,
+                }
+            if len(items) > 1:
+                result.unsupported.append({"adapter": self.id, "file": context.source, "line": 1, "expression": context.path.name, "reason": "stateful-color-selector-uses-default-state"})
+            return result
         if _local(root.tag) == "resources":
             for child in root:
                 tag, attrs, value = _local(child.tag), _attrs(child), (child.text or "").strip()
                 name = attrs.get("name") or attrs.get("Key")
-                if not name or not value:
+                if not name:
                     continue
-                group = "colors" if tag in {"color", "Color", "SolidColorBrush"} else "typography" if value.endswith("sp") else "spacing"
                 line = _line(context.text, name)
-                result.tokens[group][_slug(name).replace("-", "_")] = {"value": _normalize_ref(value, group), "source": {"file": context.source, "line": line}, "adapter": self.id}
+                if tag == "style":
+                    result.unsupported.append({"adapter": self.id, "file": context.source, "line": line, "expression": name, "reason": "unresolved-android-style"})
+                    continue
+                if not value:
+                    continue
+                if tag in {"color", "Color", "SolidColorBrush"}:
+                    groups = ("colors",)
+                elif tag == "dimen":
+                    groups = ("spacing", "typography") if value.endswith("sp") else ("spacing",)
+                elif tag in {"string", "plurals", "string-array"}:
+                    groups = ("strings",)
+                elif tag in {"bool", "integer", "fraction"}:
+                    groups = ("values",)
+                else:
+                    continue
+                for group in groups:
+                    result.tokens.setdefault(group, {})[_slug(name).replace("-", "_")] = {
+                        "value": _normalize_ref(value, group),
+                        "source": {"file": context.source, "line": line},
+                        "adapter": self.id,
+                    }
             if "/values-night" in "/" + context.source.lower().replace("\\", "/"):
                 result.themes.append({"id": "dark", "label": "Dark", "kind": "dark", "sourceRefs": [{"file": context.source, "line": 1, "reason": "values-night"}], "tokenOverrides": result.tokens, "nodeOverrides": {}})
-                result.tokens = {"colors": {}, "spacing": {}, "radii": {}, "typography": {}}
+                result.tokens = {group: {} for group in result.tokens}
             return result
+        if context.role == "navigation":
+            return result
+        layout_metadata = android_layout_metadata(context.path)
+        if context.role not in {"screen", "partial"} or not layout_metadata:
+            return result
+        emit_screen = context.role == "screen"
+        content_root = root
+        if _local(root.tag) == "layout":
+            content_root = next((child for child in root if isinstance(child.tag, str) and _local(child.tag) != "data"), None)
+            if content_root is None:
+                result.unsupported.append({"adapter": self.id, "file": context.source, "line": 1, "expression": "<layout>", "reason": "data-binding-layout-without-view-root"})
+                return result
         platform = "android-tv" if any(value.startswith("android-tv") for value in context.platforms) else "android"
-        screen_id = _slug(context.path.stem, "android-layout")
+        qualifier = layout_metadata.get("qualifier", "")
+        screen_id = _slug(f"{context.path.stem}-{qualifier}" if qualifier else context.path.stem, "android-layout")
         root_id = f"{screen_id}-root"
         result.nodes[root_id] = _root_node(context, self.id, "project.android.layout")
         count = 0
+        search_offset = 0
 
         def convert(element: ET.Element) -> str:
-            nonlocal count
+            nonlocal count, search_offset
             count += 1
             raw_tag, attrs = _local(element.tag), _attrs(element)
             short = raw_tag.rsplit(".", 1)[-1]
             node_id = f"{screen_id}-{_slug(attrs.get('id', '').split('/')[-1] or short)}-{count}"
+            opening = f"<{raw_tag}"
+            offset = context.text.find(opening, search_offset)
+            if offset < 0 and attrs.get("id"):
+                offset = context.text.find(attrs["id"], search_offset)
+            line = context.text.count("\n", 0, offset) + 1 if offset >= 0 else 1
+            if offset >= 0:
+                search_offset = offset + 1
+            if short == "include":
+                include_layout = attrs.get("layout", "")
+                node = {
+                    "type": "container", "component": "include", "includeLayout": include_layout,
+                    "text": f"Include: {include_layout or 'unknown layout'}", "layout": {}, "style": {}, "children": [],
+                    "source": {"file": context.source, "line": line}, "confidence": "approximate",
+                    "standardRef": "project.android.include", "provenance": {
+                        "component": property_evidence(context.source, line, "<include>", self.id, "exact"),
+                        "text": property_evidence(context.source, line, include_layout or "<include>", self.id, "approximate"),
+                    },
+                }
+                for attr, path in (("layout_width", "layout.width"), ("layout_height", "layout.height"), ("layout_margin", "layout.margin")):
+                    if attr in attrs:
+                        _set(node, path, _normalize_ref(attrs[attr], "spacing"), context, line, f'{attr}="{attrs[attr]}"', self.id)
+                result.nodes[node_id] = node
+                return node_id
             node_type = self.TYPES.get(short, "custom")
-            line = _line(context.text, f"<{raw_tag}")
             standard_prefix = "androidtv" if platform == "android-tv" else "material3" if short.startswith("Material") or "TextInput" in short else "project"
             node: dict[str, Any] = {
                 "type": node_type, "component": raw_tag, "layout": {}, "style": {}, "children": [], "source": {"file": context.source, "line": line},
                 "confidence": "high" if node_type != "custom" else "unsupported", "standardRef": f"{standard_prefix}.android-xml.{short.lower()}", "provenance": {},
             }
             if node_type != "custom":
-                node["inheritsAppearance"] = True
                 node["provenance"]["component"] = property_evidence(context.source, line, raw_tag, self.id, "exact")
             else:
                 result.unsupported.append({"adapter": self.id, "file": context.source, "line": line, "expression": raw_tag, "reason": "unsupported-android-view"})
             mapping = {
                 "layout_width": ("layout.width", "spacing"), "layout_height": ("layout.height", "spacing"), "padding": ("layout.padding", "spacing"),
-                "layout_margin": ("layout.margin", "spacing"), "background": ("style.background", "colors"), "textColor": ("style.color", "colors"),
-                "textSize": ("style.fontSize", "typography"), "alpha": ("style.opacity", "spacing"),
+                "paddingHorizontal": ("layout.paddingHorizontal", "spacing"), "paddingVertical": ("layout.paddingVertical", "spacing"),
+                "paddingStart": ("layout.paddingLeft", "spacing"), "paddingEnd": ("layout.paddingRight", "spacing"),
+                "paddingLeft": ("layout.paddingLeft", "spacing"), "paddingRight": ("layout.paddingRight", "spacing"),
+                "paddingTop": ("layout.paddingTop", "spacing"), "paddingBottom": ("layout.paddingBottom", "spacing"),
+                "layout_margin": ("layout.margin", "spacing"), "layout_marginHorizontal": ("layout.marginHorizontal", "spacing"),
+                "layout_marginVertical": ("layout.marginVertical", "spacing"), "layout_marginStart": ("layout.marginLeft", "spacing"),
+                "layout_marginEnd": ("layout.marginRight", "spacing"), "layout_marginLeft": ("layout.marginLeft", "spacing"),
+                "layout_marginRight": ("layout.marginRight", "spacing"), "layout_marginTop": ("layout.marginTop", "spacing"),
+                "layout_marginBottom": ("layout.marginBottom", "spacing"), "minWidth": ("layout.minWidth", "spacing"),
+                "minHeight": ("layout.minHeight", "spacing"), "background": ("style.background", "colors"),
+                "backgroundTint": ("style.backgroundColor", "colors"), "textColor": ("style.color", "colors"),
+                "textSize": ("style.fontSize", "typography"), "fontFamily": ("style.fontFamily", "typography"),
+                "alpha": ("style.opacity", "spacing"), "elevation": ("style.elevation", "spacing"),
+                "cardElevation": ("style.elevation", "spacing"), "cardCornerRadius": ("style.radius", "radii"),
+                "strokeColor": ("style.borderColor", "colors"), "strokeWidth": ("style.borderWidth", "spacing"),
             }
             for attr, (path, group) in mapping.items():
                 if attr in attrs:
                     _set(node, path, _normalize_ref(attrs[attr], group), context, line, f'{attr}="{attrs[attr]}"', self.id)
+                    if attrs[attr].startswith("?attr/"):
+                        node["confidence"] = "approximate" if node["confidence"] != "unsupported" else "unsupported"
+                        result.unsupported.append({"adapter": self.id, "file": context.source, "line": line, "expression": f'{attr}="{attrs[attr]}"', "reason": "unresolved-theme-attribute"})
             if attrs.get("orientation") in {"vertical", "horizontal"}:
                 _set(node, "layout.direction", "column" if attrs["orientation"] == "vertical" else "row", context, line, f'orientation="{attrs["orientation"]}"', self.id)
+            elif short in {"FrameLayout", "CoordinatorLayout", "ConstraintLayout", "RelativeLayout"}:
+                _set(node, "layout.direction", "overlay", context, line, raw_tag, self.id, "approximate" if short in {"ConstraintLayout", "RelativeLayout"} else "high")
+            gravity = attrs.get("gravity", "")
+            if "center" in gravity:
+                _set(node, "layout.align", "center", context, line, f'gravity="{gravity}"', self.id, "approximate")
+                _set(node, "layout.justify", "center", context, line, f'gravity="{gravity}"', self.id, "approximate")
+            if attrs.get("layout_gravity"):
+                _set(node, "layout.alignSelf", attrs["layout_gravity"], context, line, f'layout_gravity="{attrs["layout_gravity"]}"', self.id, "approximate")
+            if attrs.get("visibility") == "gone":
+                _set(node, "layout.display", "none", context, line, 'visibility="gone"', self.id)
+            constraints = {key: value for key, value in attrs.items() if key.startswith("layout_constraint")}
+            if constraints:
+                node["androidConstraints"] = constraints
+                if node["confidence"] != "unsupported":
+                    node["confidence"] = "approximate"
+                result.unsupported.append({"adapter": self.id, "file": context.source, "line": line, "expression": ", ".join(sorted(constraints)), "reason": "unresolved-constraint-equations"})
             if attrs.get("text"):
-                node["text"] = attrs["text"]
-                node["provenance"]["text"] = property_evidence(context.source, line, f'text="{attrs["text"]}"', self.id, "exact")
+                node["text"] = _normalize_ref(attrs["text"], "strings")
+                text_confidence = "approximate" if attrs["text"].startswith("@{") else "exact"
+                node["provenance"]["text"] = property_evidence(context.source, line, f'text="{attrs["text"]}"', self.id, text_confidence)
+                if text_confidence == "approximate":
+                    node["confidence"] = "approximate" if node["confidence"] != "unsupported" else "unsupported"
+                    result.unsupported.append({"adapter": self.id, "file": context.source, "line": line, "expression": attrs["text"], "reason": "unresolved-data-binding-expression"})
+            if attrs.get("hint"):
+                node["placeholder"] = _normalize_ref(attrs["hint"], "strings")
+                node["provenance"]["placeholder"] = property_evidence(context.source, line, f'hint="{attrs["hint"]}"', self.id, "exact")
             if attrs.get("src") or attrs.get("srcCompat"):
                 asset = attrs.get("srcCompat") or attrs.get("src")
                 node["asset"] = asset
                 node["provenance"]["asset"] = property_evidence(context.source, line, str(asset), self.id, "exact")
+            if attrs.get("contentDescription"):
+                node["semantics"] = {"label": _normalize_ref(attrs["contentDescription"], "strings")}
+            if attrs.get("inputType"):
+                node["inputType"] = attrs["inputType"]
+            if attrs.get("style") or attrs.get("theme") or attrs.get("textAppearance"):
+                expression = attrs.get("style") or attrs.get("theme") or attrs.get("textAppearance")
+                result.unsupported.append({"adapter": self.id, "file": context.source, "line": line, "expression": expression, "reason": "unresolved-android-style-reference"})
             if attrs.get("focusable") == "true" or platform == "android-tv" and node_type in {"button", "input"}:
                 node["states"] = {"default": {}, "focused": {"style": {"outline": "source-focus"}}}
             node["children"] = [convert(child) for child in element if isinstance(child.tag, str)]
             result.nodes[node_id] = node
             return node_id
 
-        result.nodes[root_id]["children"] = [convert(root)]
-        result.screens.append({"id": screen_id, "name": context.path.stem, "root": root_id, "route": "", "platform": platform, "source": {"file": context.source, "line": 1, "symbol": context.path.stem}, "confidence": "high"})
+        if _local(content_root.tag) == "merge":
+            result.nodes[root_id]["children"] = [convert(child) for child in content_root if isinstance(child.tag, str)]
+        else:
+            result.nodes[root_id]["children"] = [convert(content_root)]
+        screen = {
+            "id": screen_id, "name": layout_metadata["name"], "root": root_id, "route": "", "platform": platform,
+            "source": {"file": context.source, "line": 1, "symbol": context.path.stem}, "confidence": "high",
+            "androidLayout": layout_metadata["resource"], "resourceQualifier": qualifier, "translationStatus": "translated",
+        }
+        if qualifier:
+            screen["variantOf"] = _slug(context.path.stem, "android-layout")
+        if emit_screen:
+            result.screens.append(screen)
+        else:
+            result.components.append({
+                "id": f"android-layout:{screen_id}", "name": layout_metadata["name"], "root": root_id,
+                "resource": layout_metadata["resource"], "resourceQualifier": qualifier,
+                "source": {"file": context.source, "line": 1, "symbol": context.path.stem},
+            })
         return result
 
 

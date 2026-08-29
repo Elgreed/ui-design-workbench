@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ui-design-workbench-cli"
-version = "0.3.4"
+version = "0.3.5"
 description = "Repository UI indexing, graph, preview, and deterministic review CLI"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -20,15 +20,23 @@ classifiers = [
 
 [project.scripts]
 uidw = "uidw:main"
+uidw-mcp = "uidw_mcp:main"
+
+[project.optional-dependencies]
+mcp = ["mcp>=2,<3"]
 
 [project.urls]
 Homepage = "https://github.com/Elgreed/ui-design-workbench"
 Repository = "https://github.com/Elgreed/ui-design-workbench"
+Changelog = "https://github.com/Elgreed/ui-design-workbench/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
 package-dir = { "" = "scripts" }
 py-modules = [
   "uidw",
+  "uidw_mcp",
+  "scoped_context",
+  "android_xml_support",
   "scan_ui",
   "ir_contracts",
   "fidelity_core",
@@ -42,5 +50,26 @@ py-modules = [
 ]
 
 [tool.setuptools.data-files]
-"share/ui-design-workbench/references" = ["references/platform-profiles.json"]
+"share/ui-design-workbench" = ["SKILL.md"]
+"share/ui-design-workbench/references" = ["references/*.md", "references/platform-profiles.json"]
 "share/ui-design-workbench/schemas" = ["schemas/*.json"]
+"share/ui-design-workbench/scripts" = [
+  "scripts/android_xml_support.py",
+  "scripts/coverage_report.py",
+  "scripts/fidelity_adapter_api.py",
+  "scripts/fidelity_adapters.py",
+  "scripts/fidelity_core.py",
+  "scripts/fidelity_platform_adapters.py",
+  "scripts/generate_interaction_matrix.py",
+  "scripts/ir_contracts.py",
+  "scripts/merge_review_state.py",
+  "scripts/quality_common.py",
+  "scripts/render_preview.py",
+  "scripts/scan_ui.py",
+  "scripts/scoped_context.py",
+  "scripts/smoke_preview.js",
+  "scripts/uidw.py",
+  "scripts/uidw_mcp.py",
+  "scripts/validate_platform_profiles.py",
+  "scripts/visual_regression.py",
+]

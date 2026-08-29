@@ -315,6 +315,16 @@ For a completed expert audit, `scope.interactions`, `scope.uxLenses`, `interacti
 
 For web inventories, each `discoveredScreens` item may also carry `label`, `groupPath`, `parentFragment`, and `sourceKind`. `groupPath` contains the visible navigation ancestors, `parentFragment` links a nested tab or detail view to its owning section, and `sourceKind` identifies whether the evidence came from an HTML section, an HTML tab panel, or a deterministic JS-generated tab set. These fields are scan evidence: review builders should preserve them when refining `screenTree`, not collapse nested logical views back to the source-file level.
 
+`navigationGraph` is the deterministic source-evidence graph produced by the scanner. Its parent/child edges document which logical views belong together; they do not replace rendered `navigate` actions. Runtime diagnostics still exercise the actions present in the preview. `discoveredSurfaces` records explicit overlays and non-screen states such as dialogs, authenticated gates, list/detail modes, loading, empty, error, and success markers. A surface becomes a scenario only after its source state can be mapped to concrete IR node overrides; merely discovering it must not inflate the screen count.
+
+Validation compares every discovered `groupPath` and `parentFragment` with `screenTree`. A nested logical view must have a deeper tree path than its parent. A complete but flattened tree is invalid even when every screen ID occurs exactly once.
+
+## Scoped agent context and IR patches
+
+Agents should not receive the complete IR for ordinary screen or finding work. `uidw scope` produces `ui-agent-context.json` with complete selected node subtrees, their ancestors, referenced tokens, relevant proposal overrides, source files, and baseline/revision guards. When the requested token budget is too small, UIDW reports that the scope is over budget instead of silently cutting structural nodes; split the work by screen or finding.
+
+Agent changes use `ui-ir.patch.json` described by `schemas/ui-ir.patch.schema.json`. The target project, baseline hash, and review revision must match. Only these operations are accepted: `upsert-findings`, `upsert-versions` (proposal versions only), `merge-annotations`, and `record-verifications`. The patch applier refuses operations that replace baseline screens, nodes, tokens, themes, or fixtures. Apply into a new IR file, validate it, and promote it explicitly after approval.
+
 The workbench renders this tree in the left sidebar, opens ancestors of the active screen, highlights the active leaf in blue, shows its full breadcrumb in the toolbar, and lets the reviewer hide or restore the entire sidebar. Hovering or focusing a `navigate` control previews its destination in amber and shows the destination breadcrumb, so current and prospective screens remain visually distinct. When the scan only knows files and platforms, it creates a provisional platform → source file → screen tree; refine that tree from actual navigation before review.
 
 ## Node types
