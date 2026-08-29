@@ -1,6 +1,6 @@
 # UI Design Workbench
 
-[Русская версия](README.ru.md) · [Changelog](CHANGELOG.md) · [Release guide](RELEASING.md)
+[Русская версия](README.ru.md) · [Changelog](CHANGELOG.md)
 
 Turn repository UI source into an offline interactive HTML workbench—without building or running the application.
 
@@ -104,7 +104,6 @@ A Windows `.exe` is not published yet. PyPI + `pipx` is the primary cross-platfo
 ## Documentation
 
 - [Changelog](CHANGELOG.md)
-- [Release and distribution guide](RELEASING.md)
 - [Agent integrations](references/agent-integrations.md)
 - [Fidelity contract](references/fidelity.md)
 - [Native rendering](references/native-rendering.md)

@@ -1,6 +1,6 @@
 # UI Design Workbench
 
-[English](README.md) · [История изменений](CHANGELOG.md) · [Как выпускать релизы](RELEASING.md)
+[English](README.md) · [История изменений](CHANGELOG.md)
 
 Превращает UI-код проекта в автономный интерактивный HTML-workbench — без сборки и запуска приложения.
 
@@ -104,7 +104,6 @@ Windows `.exe` пока не публикуется. Основной кросс
 ## Документация
 
 - [История изменений](CHANGELOG.md)
-- [Выпуск и распространение](RELEASING.md)
 - [Интеграции с агентами](references/agent-integrations.md)
 - [Контракт точности](references/fidelity.md)
 - [Нативный рендеринг](references/native-rendering.md)
