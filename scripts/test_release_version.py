@@ -70,6 +70,9 @@ class ReleaseVersionTests(unittest.TestCase):
         self.assertIn('gh run watch "${RUN_ID}" --exit-status', releasing)
         self.assertIn('tags:\n      - "v*.*.*"', workflow)
         self.assertIn("python scripts/verify_workbench_goldens.py", workflow)
+        self.assertIn("workbench-goldens:", workflow)
+        self.assertIn("runs-on: windows-latest", workflow)
+        self.assertIn("- workbench-goldens", workflow)
 
 
 if __name__ == "__main__":

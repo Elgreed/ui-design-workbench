@@ -112,4 +112,4 @@ Windows `.exe` пока не публикуется. Основной кросс
 - [Схема IR](references/ir-schema.md)
 - [Процесс ревью](references/review-workflow.md)
 
-Текущая версия CLI: `0.6.4`.
+Текущая версия CLI: `0.6.5`.

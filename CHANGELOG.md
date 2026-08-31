@@ -6,6 +6,13 @@ Not every historical version was published as a GitHub Release or package artifa
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-08-31
+
+### Fixed
+
+- Release validation now runs Windows-authored workbench screenshot goldens on a Windows runner while keeping package tests and builds on Linux; PyPI publishing waits for both jobs.
+- This release includes the changes prepared for `v0.6.4`, whose pipeline stopped before package and GitHub Release publication.
+
 ## [0.6.4] - 2026-08-31
 
 ### Added

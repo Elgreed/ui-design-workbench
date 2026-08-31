@@ -112,4 +112,4 @@ A Windows `.exe` is not published yet. PyPI + `pipx` is the primary cross-platfo
 - [IR schema](references/ir-schema.md)
 - [Review workflow](references/review-workflow.md)
 
-Current CLI version: `0.6.4`.
+Current CLI version: `0.6.5`.
