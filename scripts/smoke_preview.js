@@ -67,7 +67,11 @@ const delay = milliseconds => new Promise(resolve => setTimeout(resolve, millise
 async function waitForFile(file, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (fs.existsSync(file) && fs.statSync(file).size > 0) return;
+    try {
+      if (fs.statSync(file).size > 0) return;
+    } catch (error) {
+      if (!['ENOENT', 'EBUSY', 'EACCES', 'EPERM'].includes(error.code)) throw error;
+    }
     await delay(100);
   }
   throw new Error(`Timed out waiting for ${file}`);
@@ -119,7 +123,7 @@ async function main() {
   let socket;
   let cdp;
   try {
-    await waitForFile(activePort, Math.min(args.timeoutMs, 15000));
+    await waitForFile(activePort, Math.min(args.timeoutMs, 30000));
     const [port] = fs.readFileSync(activePort, 'utf8').trim().split(/\r?\n/);
     let targets = [];
     const targetDeadline = Date.now() + 15000;

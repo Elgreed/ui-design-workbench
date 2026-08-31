@@ -6,6 +6,13 @@ Not every historical version was published as a GitHub Release or package artifa
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-08-31
+
+### Fixed
+
+- Headless Chromium startup now retries transient Windows locks on `DevToolsActivePort` and allows slower CI runners up to 30 seconds to publish the port.
+- This release includes the changes prepared for `v0.6.4` and `v0.6.5`, whose pipelines stopped before package and GitHub Release publication.
+
 ## [0.6.5] - 2026-08-31
 
 ### Fixed
