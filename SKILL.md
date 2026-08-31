@@ -26,11 +26,13 @@ If first-use context says `setupRequired`, ask only for `low`, `medium`, or `hig
 
 ## 2. Route the request
 
-- Reconstruct/generate/redesign: read [references/design-modes.md](references/design-modes.md), then only the matching platform section from [references/platform-standards.md](references/platform-standards.md). Use cached evidence and `uidw workbench`; validate transfer fidelity, not product UX. For Android or Apple visual accuracy also read [references/native-rendering.md](references/native-rendering.md) and call MCP `ui_native_status` (or `uidw native status`).
+- Reconstruct/generate/redesign: read [references/design-modes.md](references/design-modes.md), then only the matching platform section from [references/platform-standards.md](references/platform-standards.md). Use cached evidence and `uidw workbench`; validate transfer fidelity, not product UX. Layout fidelity comes from the runtime-free deterministic projection; do not build or launch the source application.
 - Explicit review/audit/critique: read [references/ui-reviewer.md](references/ui-reviewer.md) and [references/review-workflow.md](references/review-workflow.md). Review immutable Before only and work in bounded screen batches.
 - Workbench chrome behavior: read [references/workbench-ui.md](references/workbench-ui.md).
 - Ordinary UI source task with `uiMode.enabled=true`: read [references/ui-guidance-mode.md](references/ui-guidance-mode.md). Do not create a preview or review unless requested.
 - Cache/install/agent integration question: read only [references/cache-protocol.md](references/cache-protocol.md) or [references/agent-integrations.md](references/agent-integrations.md), respectively.
+
+Legacy provider discovery remains available through read-only MCP `ui_native_status` (or `uidw native status`). It is optional compatibility diagnostics and must not be called as part of reconstruction, deterministic layout, rendering, or fidelity gating.
 
 ## 3. Return sparse changes
 
@@ -49,6 +51,6 @@ Allowed operations are `upsert-findings`, `upsert-versions`, `merge-annotations`
 - Do not run the target app, emulator, simulator, build, or dev server unless separately requested. Headless checks may open only generated local HTML.
 - Preserve discovered screens, routes, project components, platform idioms, tokens, themes, states, provenance, and unsupported gaps. Do not invent polish or browser-default replacements.
 - HTML is a projection. Base IR is immutable Before; proposal versions are sparse overrides.
-- Android/Apple source translation is structural-only until a source-matched native capture exists. Never call HTML a native render.
+- Android, Apple, Windows, and Flutter source translation uses deterministic projection geometry where the shared layout subset is known. Never call HTML a native render or claim runtime/pixel parity without matching native evidence.
 - Applying a proposal to real source requires a separate explicit `Apply to project` or direct-fix authorization, bounded source targets, incremental sync, and targeted verification. Never repeat the full AI review automatically.
 - Keep cache and review artifacts outside source control unless the user explicitly requests otherwise.

@@ -1,12 +1,12 @@
 # Source-fidelity contract
 
-## Fidelity Core v0.3 with native evidence levels
+## Fidelity Core v0.3 with deterministic projection
 
 The scanner uses the provider-neutral adapter registry described in [adapter-api.md](adapter-api.md). Built-in Web, React/Vue/Svelte, Compose, Android XML, SwiftUI, Storyboard/XIB, XAML, Flutter, and React Native adapters translate only deterministic supported subsets and record the rest in `fidelity.unsupported`. A strict artifact declares `fidelity.schemaVersion: "0.3"`.
 
 Each translated property carries stable property-level provenance. Token aliases are resolved for rendering while their original references and source records remain in IR. The baseline is sealed with `review.baselineHash`; proposal versions remain sparse `nodeOverrides`. Editing baseline screens, nodes, tokens, themes, or fixtures without an explicit rescan invalidates the strict gate.
 
-Use `uidw fidelity capabilities` for the installed support matrix, `uidw fidelity report` for the compact gate, and `uidw fidelity explain` for one node or evidence ID. Capabilities distinguish `structuralTier`, `visualTier`, and `nativeEvidenceRequired`; Android and Apple source adapters must never claim native visual fidelity. Per-adapter fixtures prevent silent translation drift.
+Use `uidw fidelity capabilities` for the installed support matrix, `uidw fidelity report` for the compact gate, and `uidw fidelity explain` for one node or evidence ID. Capabilities distinguish `structuralTier` and `visualTier`; source adapters report `deterministic-projection`, require native evidence for native-platform visual verification, and never start that evidence collection automatically. Per-adapter fixtures prevent silent translation drift.
 
 The HTML projection resolves recognized controls through the official-doc-first [platform component catalog](component-catalog.md). Catalog geometry is a render-only fallback: explicit source layout, theme, token, and style evidence always wins, and the source IR is not mutated.
 
@@ -52,4 +52,4 @@ Preserve `discoveredNavigationTargets`. Each target must map to a screen's `frag
 
 The renderer enforces the minimum gate. `--allow-draft` is diagnostic and must not be used to solicit design approval.
 
-For Android and Apple, also follow [native-rendering.md](native-rendering.md). The HTML workbench must display `structural` and “native capture not verified” until a matching native capture exists. Provider installation alone is not evidence.
+For Android, Apple, Windows, and Flutter, the HTML workbench uses the same runtime-free layout model as every other source adapter. A partial context remains an explicit projection gap; it must not trigger a build, emulator, simulator, or native-capture calibration step.

@@ -16,6 +16,8 @@ class ReleaseVersionTests(unittest.TestCase):
         (root / "scripts").mkdir()
         (root / "pyproject.toml").write_text(f'[project]\nname = "sample"\nversion = "{package}"\n', encoding="utf-8")
         (root / "scripts" / "uidw.py").write_text(f'CLI_VERSION = "{cli}"\n', encoding="utf-8")
+        (root / "README.md").write_text(f"Current CLI version: `{package}`.\n", encoding="utf-8")
+        (root / "README.ru.md").write_text(f"Текущая версия CLI: `{package}`.\n", encoding="utf-8")
         (root / "CHANGELOG.md").write_text(changelog, encoding="utf-8")
 
     def test_consistent_release_is_accepted(self) -> None:
@@ -29,7 +31,19 @@ class ReleaseVersionTests(unittest.TestCase):
             root = Path(directory)
             self.write_project(root, "1.2.2", "1.2.1", "## [Unreleased]\n")
             errors = validate_release_version(root, "v1.2.3")
-            self.assertEqual(len(errors), 3)
+            self.assertEqual(len(errors), 5)
+
+    def test_stale_readme_versions_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_project(root, "1.2.3", "1.2.3", "## [1.2.3] - 2026-08-29\n")
+            (root / "README.md").write_text("Current CLI version: `0.0.0`.\n", encoding="utf-8")
+            (root / "README.ru.md").write_text("Текущая версия CLI: `0.0.0`.\n", encoding="utf-8")
+
+            errors = validate_release_version(root, "v1.2.3")
+
+            self.assertTrue(any("README.md" in error for error in errors))
+            self.assertTrue(any("README.ru.md" in error for error in errors))
 
     def test_tag_format_is_strict(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -55,6 +69,7 @@ class ReleaseVersionTests(unittest.TestCase):
         self.assertIn("test -n \"${RUN_ID}\"", releasing)
         self.assertIn('gh run watch "${RUN_ID}" --exit-status', releasing)
         self.assertIn('tags:\n      - "v*.*.*"', workflow)
+        self.assertIn("python scripts/verify_workbench_goldens.py", workflow)
 
 
 if __name__ == "__main__":

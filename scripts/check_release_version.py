@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail a release when its tag, package, CLI, and changelog versions disagree."""
+"""Fail a release when its tag, package, CLI, docs, and changelog versions disagree."""
 
 from __future__ import annotations
 
@@ -26,6 +26,16 @@ def validate_release_version(root: Path, tag: str) -> list[str]:
     cli_version = cli_match.group(1) if cli_match else ""
     if cli_version != version:
         errors.append(f"CLI_VERSION is {cli_version!r}, expected {version!r}")
+    readme_patterns = {
+        "README.md": r"^Current CLI version: `([^`]+)`\.$",
+        "README.ru.md": r"^Текущая версия CLI: `([^`]+)`\.$",
+    }
+    for filename, pattern in readme_patterns.items():
+        content = (root / filename).read_text(encoding="utf-8")
+        match = re.search(pattern, content, re.MULTILINE)
+        documented_version = match.group(1) if match else ""
+        if documented_version != version:
+            errors.append(f"{filename} version is {documented_version!r}, expected {version!r}")
     changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
     if not re.search(rf"^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$", changelog, re.MULTILINE):
         errors.append(f"CHANGELOG.md has no dated [{version}] release section")

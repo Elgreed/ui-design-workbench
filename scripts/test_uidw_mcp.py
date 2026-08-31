@@ -27,7 +27,7 @@ class UidwMcpTests(unittest.TestCase):
             "largeInternalPayload": {"nodes": list(range(100))},
         })
 
-        self.assertEqual(set(result), {"version", "status", "previewFile", "workflow"})
+        self.assertEqual(set(result), {"version", "status", "previewFile", "workflow", "cliVersion"})
 
     def test_server_instructions_define_the_bounded_primary_route(self) -> None:
         self.assertIn("ui_project", uidw_mcp.SERVER_INSTRUCTIONS)
@@ -96,7 +96,17 @@ class UidwMcpTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "blocked")
         self.assertIn("missing screen", result["error"])
-        self.assertTrue(renderer.call_args.args[4])
+        self.assertFalse(renderer.call_args.args[4])
+
+    def test_workbench_result_exposes_check_failures_and_cli_version(self) -> None:
+        result = uidw_mcp.compact_workbench_result({
+            "version": 1,
+            "status": "blocked",
+            "check": {"status": "fail", "checks": {"platformAndCoverage": {"status": "fail"}}},
+        })
+
+        self.assertEqual(result["cliVersion"], uidw_mcp.uidw.CLI_VERSION)
+        self.assertEqual(result["check"]["status"], "fail")
 
     @unittest.skipIf(importlib.util.find_spec("mcp") is not None, "MCP dependency is installed")
     def test_missing_optional_dependency_has_an_actionable_error(self) -> None:

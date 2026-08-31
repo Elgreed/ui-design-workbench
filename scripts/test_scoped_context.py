@@ -92,6 +92,13 @@ class ScopedContextTests(unittest.TestCase):
         self.assertEqual(context["nodes"], {})
         self.assertEqual([item["id"] for item in context["catalog"]["screens"]], ["home", "settings"])
 
+    def test_cyclic_node_hierarchy_is_rejected(self) -> None:
+        source = sample_ir()
+        source["nodes"]["home-title"]["children"] = ["home-root"]
+
+        with self.assertRaisesRegex(ValueError, "Cyclic node hierarchy"):
+            build_scoped_context(source, screen_ids=["home"], token_budget=2000)
+
     def test_sparse_patch_preserves_baseline_and_upserts_review_data(self) -> None:
         source = sample_ir()
         patch = patch_template(source, "ui-ir.json", "ui-agent-context.json")

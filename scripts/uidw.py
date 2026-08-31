@@ -53,7 +53,7 @@ from scan_ui import (
 
 
 CACHE_VERSION = 8
-CLI_VERSION = "0.6.3"
+CLI_VERSION = "0.6.4"
 CONFIG_VERSION = 5
 STATE_DIR_NAME = ".ui-design-workbench"
 CONFIG_NAME = "config.json"
@@ -93,6 +93,7 @@ SKILL_SCRIPT_FILES = (
     "fidelity_platform_adapters.py",
     "generate_interaction_matrix.py",
     "ir_contracts.py",
+    "layout_model.py",
     "merge_review_state.py",
     "native_render_android.py",
     "native_render_apple.py",
@@ -236,25 +237,71 @@ def write_text_atomic(path: Path, value: str) -> None:
             temporary.unlink()
 
 
+def _lock_owner_pid(path: Path) -> int | None:
+    try:
+        match = re.search(r"^pid=(\d+)$", path.read_text(encoding="utf-8"), re.MULTILINE)
+        return int(match.group(1)) if match else None
+    except (OSError, ValueError):
+        return None
+
+
+def _process_is_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if pid == os.getpid():
+        return True
+    if os.name == "nt":
+        import ctypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
+        kernel32.OpenProcess.restype = ctypes.c_void_p
+        kernel32.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
+        kernel32.GetExitCodeProcess.restype = ctypes.c_int
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel32.CloseHandle.restype = ctypes.c_int
+        handle = kernel32.OpenProcess(0x1000, False, pid)
+        if not handle:
+            return ctypes.get_last_error() == 5
+        try:
+            exit_code = ctypes.c_ulong()
+            return bool(kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))) and exit_code.value == 259
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+        return True
+    except PermissionError:
+        return True
+    except ProcessLookupError:
+        return False
+
+
 @contextlib.contextmanager
 def state_lock(path: Path, timeout_seconds: float = 10.0):
     """Serialize cache writers without requiring a daemon or third-party lock package."""
     path.parent.mkdir(parents=True, exist_ok=True)
     deadline = time.monotonic() + timeout_seconds
     descriptor: int | None = None
+    token = f"{os.getpid()}-{time.time_ns()}"
     while descriptor is None:
         try:
             descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.write(descriptor, f"pid={os.getpid()}\ncreated={utc_now()}\n".encode("utf-8"))
+            os.write(descriptor, f"pid={os.getpid()}\ntoken={token}\ncreated={utc_now()}\n".encode("utf-8"))
         except FileExistsError:
             try:
-                stale = time.time() - path.stat().st_mtime > 120
+                stale_by_age = time.time() - path.stat().st_mtime > 120
             except OSError:
-                stale = False
-            if stale:
-                with contextlib.suppress(OSError):
+                stale_by_age = False
+            owner_pid = _lock_owner_pid(path)
+            abandoned = owner_pid is not None and not _process_is_running(owner_pid)
+            if abandoned or owner_pid is None and stale_by_age:
+                try:
                     path.unlink()
-                continue
+                except OSError:
+                    pass
+                else:
+                    continue
             if time.monotonic() >= deadline:
                 raise TimeoutError(f"UI cache is locked by another process: {path}")
             time.sleep(0.05)
@@ -263,8 +310,12 @@ def state_lock(path: Path, timeout_seconds: float = 10.0):
     finally:
         if descriptor is not None:
             os.close(descriptor)
-        with contextlib.suppress(OSError):
-            path.unlink()
+        try:
+            current = path.read_text(encoding="utf-8")
+            if f"token={token}" in current:
+                path.unlink()
+        except OSError:
+            pass
 
 
 def sha256_file(path: Path) -> str:
@@ -1957,11 +2008,76 @@ def import_review_result(ir_path: Path, result_path: Path, output: Path) -> dict
     payload = read_json(result_path)
     if not isinstance(ir, dict) or not isinstance(payload, dict):
         raise ValueError("IR or review result is not valid JSON")
-    incoming_ir = payload.get("uiIr") or payload.get("result", {}).get("uiIr")
+    result = payload.get("result", {}) if isinstance(payload.get("result"), dict) else {}
+    incoming_ir = payload.get("uiIr") or result.get("uiIr")
     if isinstance(incoming_ir, dict):
         if incoming_ir.get("project", {}).get("name") != ir.get("project", {}).get("name"):
             raise ValueError("Review result belongs to another project")
-        merged = incoming_ir
+        request_revision = payload.get("requestRevision") or result.get("requestRevision")
+        review = ir.get("review", {}) if isinstance(ir.get("review"), dict) else {}
+        incoming_review = incoming_ir.get("review", {}) if isinstance(incoming_ir.get("review"), dict) else {}
+        if request_revision and review.get("revision") and request_revision != review.get("revision"):
+            raise ValueError("Review result belongs to another revision")
+        if incoming_review.get("baselineHash") and incoming_review.get("baselineHash") != review.get("baselineHash"):
+            raise ValueError("Review result baselineHash does not match the immutable baseline")
+        if incoming_review.get("baselineVersion") and incoming_review.get("baselineVersion") != review.get("baselineVersion"):
+            raise ValueError("Review result baselineVersion does not match the immutable baseline")
+        if incoming_ir.get("screens") is not None and incoming_ir.get("screens") != ir.get("screens"):
+            raise ValueError("Review result cannot replace immutable baseline screens")
+        merged = copy.deepcopy(ir)
+        merged_nodes = merged.setdefault("nodes", {})
+        incoming_nodes = incoming_ir.get("nodes", {})
+        if not isinstance(incoming_nodes, dict):
+            raise ValueError("Review result nodes must be an object")
+        for node_id, node in incoming_nodes.items():
+            if node_id in merged_nodes and merged_nodes[node_id] != node:
+                raise ValueError(f"Review result cannot replace immutable baseline node: {node_id}")
+            if node_id not in merged_nodes:
+                merged_nodes[node_id] = copy.deepcopy(node)
+
+        merged_review = merged.setdefault("review", {})
+        incoming_versions = payload.get("versions") or result.get("versions") or incoming_review.get("versions", [])
+        versions_by_id = {
+            item.get("id"): copy.deepcopy(item)
+            for item in merged_review.get("versions", [])
+            if isinstance(item, dict) and item.get("id")
+        }
+        baseline_version = merged_review.get("baselineVersion")
+        imported_version_ids: list[str] = []
+        for version in incoming_versions if isinstance(incoming_versions, list) else []:
+            if not isinstance(version, dict) or not version.get("id"):
+                continue
+            version_id = str(version["id"])
+            if version_id == baseline_version and version_id in versions_by_id and versions_by_id[version_id] != version:
+                raise ValueError("Review result cannot replace the immutable baseline version")
+            if version_id != baseline_version:
+                versions_by_id[version_id] = copy.deepcopy(version)
+                imported_version_ids.append(version_id)
+        merged_review["versions"] = list(versions_by_id.values())
+
+        incoming_audit = incoming_review.get("audit", {}) if isinstance(incoming_review.get("audit"), dict) else {}
+        incoming_findings = payload.get("findings") or result.get("findings") or incoming_audit.get("findings", [])
+        merged_audit = merged_review.setdefault("audit", {})
+        findings_by_id = {
+            item.get("id"): copy.deepcopy(item)
+            for item in merged_audit.get("findings", [])
+            if isinstance(item, dict) and item.get("id")
+        }
+        for finding in incoming_findings if isinstance(incoming_findings, list) else []:
+            if isinstance(finding, dict) and finding.get("id"):
+                findings_by_id[finding["id"]] = copy.deepcopy(finding)
+        merged_audit["findings"] = list(findings_by_id.values())
+        if imported_version_ids:
+            merged_review["activeVersion"] = imported_version_ids[-1]
+        history = merged_review.setdefault("importHistory", [])
+        if not isinstance(history, list):
+            history = merged_review["importHistory"] = []
+        history.append({
+            "source": str(result_path.resolve()),
+            "requestRevision": request_revision,
+            "versions": imported_version_ids,
+            "importedAt": utc_now(),
+        })
     else:
         errors = validate_feedback(ir, payload)
         if errors:
@@ -2358,7 +2474,7 @@ def build_workbench(
     rendered = render_artifact(ir_path, preview, allow_draft, agent)
     checked = check_artifact(ir_path, destination / "validation", level, "json", preview, purpose)
     opened = open_preview(preview, launch, view, screen, lang, theme, axis)
-    status = "pass" if checked["status"] == "pass" else "warning"
+    status = "pass" if checked["status"] == "pass" else "blocked"
     result = {"version": 1, "status": status, "purpose": purpose, "render": rendered, "check": checked, "previewFile": str(preview), "url": opened["url"], "launched": opened["launched"]}
     if initialization:
         result["initialization"] = initialization
@@ -2432,34 +2548,71 @@ def pack_artifact(ir_path: Path, output: Path) -> dict[str, Any]:
 def unpack_artifact(bundle: Path, output_dir: Path) -> dict[str, Any]:
     source = bundle.resolve()
     destination = output_dir.resolve()
-    destination.mkdir(parents=True, exist_ok=True)
-    extracted: list[str] = []
+    payloads: dict[str, bytes] = {}
     with zipfile.ZipFile(source, "r") as archive:
-        for info in archive.infolist():
+        infos = archive.infolist()
+        names = [info.filename for info in infos]
+        if len(names) != len(set(names)):
+            raise ValueError("Bundle contains duplicate paths")
+        for info in infos:
             target = (destination / info.filename).resolve()
             try:
                 target.relative_to(destination)
             except ValueError as exc:
                 raise ValueError(f"Unsafe bundle path: {info.filename}") from exc
-            if info.is_dir():
-                target.mkdir(parents=True, exist_ok=True)
-                continue
-            target.parent.mkdir(parents=True, exist_ok=True)
-            write_text = archive.read(info)
-            temporary = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+        file_infos = {info.filename: info for info in infos if not info.is_dir()}
+        if "uidw-bundle.json" not in file_infos:
+            raise ValueError("Bundle manifest uidw-bundle.json is missing")
+        try:
+            manifest = json.loads(archive.read(file_infos["uidw-bundle.json"]).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("Bundle manifest is not valid JSON") from exc
+        if not isinstance(manifest, dict) or manifest.get("version") != 1 or manifest.get("type") != "ui-design-workbench-bundle":
+            raise ValueError("Bundle manifest type or version is unsupported")
+        declared = manifest.get("files")
+        if not isinstance(declared, list):
+            raise ValueError("Bundle manifest files must be an array")
+        declared_paths: set[str] = set()
+        for item in declared:
+            if not isinstance(item, dict) or not isinstance(item.get("path"), str) or not item["path"]:
+                raise ValueError("Bundle manifest contains an invalid file entry")
+            relative = item["path"]
+            target = (destination / relative).resolve()
             try:
-                temporary.write_bytes(write_text)
-                os.replace(temporary, target)
-            finally:
-                with contextlib.suppress(OSError):
-                    temporary.unlink()
-            extracted.append(info.filename)
-    manifest = read_json(destination / "uidw-bundle.json", {})
-    for item in manifest.get("files", []) if isinstance(manifest, dict) else []:
-        path = destination / item.get("path", "")
-        if not path.is_file() or sha256_file(path) != item.get("sha256"):
-            raise ValueError(f"Bundle integrity check failed: {item.get('path')}")
-    return {"version": 1, "status": "unpacked", "outputDir": str(destination), "files": extracted}
+                target.relative_to(destination)
+            except ValueError as exc:
+                raise ValueError(f"Unsafe bundle manifest path: {relative}") from exc
+            if relative == "uidw-bundle.json" or relative in declared_paths:
+                raise ValueError(f"Bundle manifest contains a duplicate or reserved path: {relative}")
+            declared_paths.add(relative)
+        archive_paths = set(file_infos) - {"uidw-bundle.json"}
+        if archive_paths != declared_paths:
+            missing = sorted(declared_paths - archive_paths)
+            unexpected = sorted(archive_paths - declared_paths)
+            raise ValueError(f"Bundle members do not match manifest; missing={missing}, unexpected={unexpected}")
+        for item in declared:
+            relative = item["path"]
+            payload = archive.read(file_infos[relative])
+            digest = hashlib.sha256(payload).hexdigest()
+            if digest != item.get("sha256") or len(payload) != item.get("bytes"):
+                raise ValueError(f"Bundle integrity check failed: {relative}")
+            payloads[relative] = payload
+        payloads["uidw-bundle.json"] = archive.read(file_infos["uidw-bundle.json"])
+
+    if destination.exists() and any(destination.iterdir()):
+        raise ValueError(f"Bundle output directory must be empty: {destination}")
+    destination.mkdir(parents=True, exist_ok=True)
+    for relative, payload in payloads.items():
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+        try:
+            temporary.write_bytes(payload)
+            os.replace(temporary, target)
+        finally:
+            with contextlib.suppress(OSError):
+                temporary.unlink()
+    return {"version": 1, "status": "unpacked", "outputDir": str(destination), "files": sorted(payloads)}
 
 
 def visual_test(

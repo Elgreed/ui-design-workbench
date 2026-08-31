@@ -6,6 +6,32 @@ Not every historical version was published as a GitHub Release or package artifa
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-08-31
+
+### Added
+
+- A buildless deterministic layout model that computes render-only geometry for parent constraints, padding and gaps, intrinsic text sizes, fill, and weighted growth across screen, theme, scenario, and review-version contexts.
+- Internal projection-geometry invariants and regression coverage; geometry validation is not exposed as a user calibration workflow.
+
+### Changed
+
+- HTML previews now consume solver-produced node rectangles when a layout context is fully known and use an explicit CSS fallback for unsupported or dynamic contexts instead of treating browser flow as source geometry.
+- Source adapters advertise runtime-free deterministic projection for the supported subset while still requiring native platform evidence before visual or pixel parity can be claimed; Compose preserves `Arrangement.spacedBy(...)` plus numeric `weight` values for the shared solver.
+
+### Fixed
+
+- Flutter projects now use `pubspec.yaml` as the application boundary, excluding documentation prototypes and generated Android/iOS shells from the screen catalog.
+- Flutter reconstruction now resolves nested GoRouter paths, Riverpod and Hook widget bases, state-class build methods, recursively referenced project widgets, constructor bindings, ARB localization, common layout/style properties, and navigation actions.
+- Route references are no longer counted as missing screen declarations, helper widgets are no longer promoted to screens merely because they share a page file, and unresolved Dart model/style constructors no longer flood fidelity gaps.
+- MCP preview builds no longer silently enable draft mode for the cached IR, and compact results expose both the running CLI version and bounded check failures so stale MCP installations are diagnosable.
+- Native source adapters and HTML audits now distinguish a deterministic structural projection from native visual verification; native evidence remains explicit-only and is never launched during reconstruction.
+- Preview assets now accept only allowlisted base64 image and font data URLs, escape resolved asset attributes, and reject attribute-injection payloads.
+- Complete expert-review imports now preserve immutable baseline screens and nodes while merging only new nodes, findings, and proposal versions.
+- Partial projection contexts now remain explicit fidelity gaps that require supported geometry instead of being reported as fully deterministic coverage.
+- Cache locks now distinguish live and abandoned owners, honor timeouts for stale files, and avoid deleting a replacement owner's lock.
+- Scoped context rejects cyclic node hierarchies, scanners ignore file symlinks outside the repository, and bundle extraction validates the complete manifest before writing into an empty destination.
+- Release validation now checks both README version markers and runs the four committed workbench golden states before publishing.
+
 ## [0.6.3] - 2026-08-29
 
 ### Added

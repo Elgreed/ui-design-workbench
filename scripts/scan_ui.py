@@ -122,7 +122,12 @@ def detect_platforms(path: Path, text: str) -> list[str]:
             found.append("windows-wpf")
         if suffix == ".xaml" and not (winui or wpf) and any(marker in text for marker in ("x:Class=", "<Page", "<UserControl", "<ResourceDictionary")):
             found.append("windows-xaml")
-    if suffix == ".dart" and ("package:flutter" in text or "extends StatelessWidget" in text or "extends StatefulWidget" in text):
+    if suffix == ".dart" and (
+        "package:flutter" in text
+        or re.search(r"\bextends\s+(?:Hook)?Consumer(?:Stateful)?Widget\b", text)
+        or "extends StatelessWidget" in text
+        or "extends StatefulWidget" in text
+    ):
         found.append("flutter")
     if suffix in {".js", ".jsx", ".ts", ".tsx"}:
         if "react-native" not in lower and "stylesheet.create" not in lower and re.search(r"\b(import|require).*react|<[A-Z][A-Za-z0-9_.]*", text):
@@ -194,7 +199,10 @@ SYMBOL_RULES: dict[str, list[tuple[str, re.Pattern[str]]]] = {
         ("view", re.compile(r"x:Class\s*=\s*[\"'][\w.]*\.?([A-Z]\w+)[\"']")),
     ],
     "flutter": [
-        ("widget", re.compile(r"\bclass\s+([A-Z]\w+)\s+extends\s+(?:StatelessWidget|StatefulWidget)\b")),
+        ("widget", re.compile(
+            r"\bclass\s+([A-Z]\w+)\s+extends\s+"
+            r"(?:StatelessWidget|StatefulWidget|ConsumerWidget|ConsumerStatefulWidget|HookWidget|HookConsumerWidget)\b"
+        )),
     ],
     "react-web": [
         ("component", re.compile(r"\b(?:function|class)\s+([A-Z]\w+)|\bconst\s+([A-Z]\w+)\s*=\s*(?:\([^)]*\)|\w+)\s*=>")),
@@ -542,13 +550,95 @@ def extract_routes(text: str, source: str) -> list[dict[str, Any]]:
             if re.search(r"(?:Page|HTML|Login|Index)Handler", handler, re.I):
                 routes.append({"route": match.group(1), "file": source, "line": line_number(text, match.start())})
         return unique_dicts(routes, ("route", "file", "line"))[:100]
+    if source.lower().endswith(".dart") and "GoRoute" in text:
+        routes.extend(extract_go_router_routes(text, source))
+        for pattern in ROUTE_PATTERNS[4:]:
+            for match in pattern.finditer(text):
+                route = match.group(1).strip()
+                if route.startswith(("/", "#")):
+                    routes.append({"route": route, "file": source, "line": line_number(text, match.start()), "kind": "reference"})
+        return unique_dicts(routes, ("route", "file", "line"))[:100]
     for pattern in ROUTE_PATTERNS:
+        if "GoRoute" in pattern.pattern and source.lower().endswith(".dart"):
+            continue
         for match in pattern.finditer(text):
             route = match.group(1).strip()
             if not route.startswith(("/", "#")):
                 continue
             routes.append({"route": route, "file": source, "line": line_number(text, match.start())})
     return unique_dicts(routes, ("route", "file", "line"))[:100]
+
+
+def _balanced_delimiter(text: str, opening: int, left: str, right: str) -> int | None:
+    depth = 0
+    quote = ""
+    escaped = False
+    for index in range(opening, len(text)):
+        char = text[index]
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = ""
+            continue
+        if char in {"'", '"'}:
+            quote = char
+        elif char == left:
+            depth += 1
+        elif char == right:
+            depth -= 1
+            if depth == 0:
+                return index
+    return None
+
+
+def extract_go_router_routes(text: str, source: str) -> list[dict[str, Any]]:
+    """Extract nested GoRouter paths and their directly built widget classes."""
+    calls: list[dict[str, Any]] = []
+    for match in re.finditer(r"\bGoRoute\s*\(", text):
+        opening = text.find("(", match.start())
+        closing = _balanced_delimiter(text, opening, "(", ")")
+        if closing is None:
+            continue
+        body = text[opening + 1:closing]
+        path_match = re.search(r"\bpath\s*:\s*(['\"])(.*?)\1", body, re.S)
+        if not path_match:
+            continue
+        routes_offset = re.search(r"\broutes\s*:", body)
+        builder_region = body[:routes_offset.start()] if routes_offset else body
+        widget_match = re.search(
+            r"(?:=>|\breturn\s+)(?:\s*const)?\s*([A-Z][A-Za-z0-9_]*)\s*\(",
+            builder_region,
+        )
+        calls.append({
+            "start": match.start(),
+            "end": closing,
+            "path": path_match.group(2).strip(),
+            "screen": widget_match.group(1) if widget_match else "",
+            "line": line_number(text, match.start()),
+        })
+    for call in calls:
+        parents = [candidate for candidate in calls if candidate["start"] < call["start"] < call["end"] < candidate["end"]]
+        parent = min(parents, key=lambda item: item["end"] - item["start"]) if parents else None
+        path = str(call["path"])
+        if path.startswith("/"):
+            absolute = path
+        else:
+            parent_path = str(parent.get("absolute") or parent["path"]) if parent else ""
+            absolute = f"{parent_path.rstrip('/')}/{path.lstrip('/')}"
+        call["absolute"] = absolute or "/"
+    return [
+        {
+            "route": str(call["absolute"]),
+            "file": source,
+            "line": call["line"],
+            "kind": "declaration",
+            **({"screen": call["screen"]} if call["screen"] else {}),
+        }
+        for call in calls
+    ]
 
 
 def screen_candidates(source: str, path: Path, text: str, platforms: list[str], symbols: list[dict[str, Any]], role: str) -> list[dict[str, Any]]:
@@ -558,7 +648,8 @@ def screen_candidates(source: str, path: Path, text: str, platforms: list[str], 
     for symbol in symbols:
         abstract_class = bool(android_source and re.search(rf"\babstract\s+class\s+{re.escape(str(symbol['name']))}\b", text))
         suffixes = ("Activity", "Fragment", "Dialog") if android_source and symbol.get("kind") == "class" else screen_suffixes
-        if symbol["name"].endswith(suffixes) or role == "screen" and not android_source:
+        role_promotes_symbol = role == "screen" and not android_source and "flutter" not in platforms
+        if symbol["name"].endswith(suffixes) or role_promotes_symbol:
             candidates.append({
                 "name": symbol["name"],
                 "file": source,
@@ -703,15 +794,25 @@ def component_candidates(source: str, path: Path, platforms: list[str], symbols:
 
 
 def iter_files(root: Path) -> Iterable[Path]:
+    resolved_root = root.resolve()
     for current, dirs, files in os.walk(root):
         dirs[:] = [directory for directory in dirs if directory not in EXCLUDED_DIRS]
         current_path = Path(current)
         for filename in files:
-            yield current_path / filename
+            candidate = current_path / filename
+            try:
+                candidate.resolve(strict=True).relative_to(resolved_root)
+            except (OSError, ValueError):
+                continue
+            yield candidate
 
 
-def analyze_file(root: Path, path: Path) -> dict[str, Any] | None:
+def analyze_file(root: Path, path: Path, primary_platforms: tuple[str, ...] = ()) -> dict[str, Any] | None:
     """Analyze one candidate file so callers can cache results by content hash."""
+    try:
+        path.resolve(strict=True).relative_to(root.resolve())
+    except (OSError, ValueError):
+        return None
     suffix = path.suffix.lower()
     source = relative(path, root)
     if suffix in ASSET_EXTENSIONS:
@@ -722,6 +823,8 @@ def analyze_file(root: Path, path: Path) -> dict[str, Any] | None:
     if text is None:
         return {"path": source, "kind": "skipped", "reason": "large-or-unreadable"}
     platforms = detect_platforms(path, text)
+    if "flutter" in primary_platforms and suffix == ".dart" and source.startswith("lib/"):
+        platforms = list(dict.fromkeys([*platforms, "flutter"]))
     if not platforms:
         return {"path": source, "kind": "source", "platforms": [], "uiFile": None}
     role = classify_role(path, text)
@@ -755,6 +858,12 @@ def analyze_file(root: Path, path: Path) -> dict[str, Any] | None:
     }
 
 
+def primary_project_platforms(root: Path) -> list[str]:
+    if (root / "pubspec.yaml").is_file() and (root / "lib").is_dir():
+        return ["flutter"]
+    return []
+
+
 def assemble_scan(root: Path, file_records: Iterable[dict[str, Any]]) -> dict[str, Any]:
     """Assemble a repository inventory from cached per-file analyses."""
     ui_files: list[dict[str, Any]] = []
@@ -778,6 +887,7 @@ def assemble_scan(root: Path, file_records: Iterable[dict[str, Any]]) -> dict[st
             policy_file = relative(candidate, root)
             break
 
+    primary_platforms = primary_project_platforms(root)
     for record in file_records:
         if not isinstance(record, dict):
             continue
@@ -789,6 +899,8 @@ def assemble_scan(root: Path, file_records: Iterable[dict[str, Any]]) -> dict[st
             continue
         platforms = record.get("platforms", [])
         if not platforms:
+            continue
+        if primary_platforms and not set(platforms).intersection(primary_platforms):
             continue
         detected.extend(platforms)
         if isinstance(record.get("uiFile"), dict):
@@ -819,6 +931,17 @@ def assemble_scan(root: Path, file_records: Iterable[dict[str, Any]]) -> dict[st
         parent_label = str(parent.get("label") or parent.get("name") or "")
         item["groupPath"] = list(dict.fromkeys([*inherited, parent_label, *item.get("groupPath", [])]))
     routes = unique_dicts(routes, ("route", "file", "line"))
+    routes_by_screen: dict[str, list[dict[str, Any]]] = {}
+    for route in routes:
+        if route.get("screen"):
+            routes_by_screen.setdefault(str(route["screen"]), []).append(route)
+    for candidate in screens:
+        matches = routes_by_screen.get(str(candidate.get("name") or ""), [])
+        if matches:
+            candidate["route"] = matches[0]["route"]
+            candidate["routeAliases"] = [item["route"] for item in matches[1:]]
+    if primary_platforms == ["flutter"] and routes_by_screen:
+        screens = [candidate for candidate in screens if str(candidate.get("name") or "") in routes_by_screen]
     components = unique_dicts(components, ("id",))
     navigation_targets = unique_dicts(navigation_targets, ("target", "file", "line"))
     surfaces = unique_dicts(surfaces, ("id",))
@@ -852,6 +975,7 @@ def assemble_scan(root: Path, file_records: Iterable[dict[str, Any]]) -> dict[st
     return {
         "version": 1,
         "repoRoot": str(root.resolve()),
+        "primaryPlatforms": primary_platforms,
         "policyFile": policy_file,
         "generatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
         "detectedPlatforms": platforms,
@@ -881,8 +1005,9 @@ def assemble_scan(root: Path, file_records: Iterable[dict[str, Any]]) -> dict[st
 
 def scan(root: Path) -> dict[str, Any]:
     records: list[dict[str, Any]] = []
+    primary_platforms = tuple(primary_project_platforms(root))
     for path in iter_files(root):
-        record = analyze_file(root, path)
+        record = analyze_file(root, path, primary_platforms)
         if record is not None:
             records.append(record)
     return assemble_scan(root, records)
@@ -956,6 +1081,27 @@ def reconcile_translated_android_screens(
             attach(mapped, candidate)
             reconciled.append(mapped)
     translated_screens[:] = reconciled
+
+
+def reconcile_translated_screens(
+    translated_screens: list[dict[str, Any]],
+    discovered: list[dict[str, Any]],
+) -> None:
+    """Attach route and discovery evidence to translated non-Android screens."""
+    by_name: dict[str, list[dict[str, Any]]] = {}
+    for candidate in discovered:
+        by_name.setdefault(str(candidate.get("name") or ""), []).append(candidate)
+    for screen in translated_screens:
+        if screen.get("platform") == "android":
+            continue
+        matches = by_name.get(str(screen.get("name") or ""), [])
+        if not matches:
+            continue
+        source_file = str(screen.get("source", {}).get("file") or "")
+        candidate = next((item for item in matches if str(item.get("file") or "") == source_file), matches[0])
+        screen["route"] = str(candidate.get("route") or screen.get("route") or "")
+        screen["routeAliases"] = list(candidate.get("routeAliases", []))
+        screen["discoveredKey"] = f'{candidate.get("file", "")}#{candidate.get("name", "")}'
 
 
 def resolve_translated_android_includes(translated: Any) -> None:
@@ -1178,6 +1324,13 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
                     node[key] = resolved
     raw_scan_screens = scan_result.get("screens", [])
     reconcile_translated_android_screens(translated.screens, raw_scan_screens)
+    reconcile_translated_screens(translated.screens, raw_scan_screens)
+    if scan_result.get("primaryPlatforms") == ["flutter"]:
+        discovered_flutter = {str(item.get("name") or "") for item in raw_scan_screens}
+        translated.screens[:] = [
+            item for item in translated.screens
+            if str(item.get("name") or "") in discovered_flutter
+        ]
     scan_screens = raw_scan_screens
     if not scan_screens:
         fallback_ui_file = next((str(item.get("path") or "") for item in scan_result.get("uiFiles", []) if item.get("path")), "")
@@ -1308,10 +1461,10 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
                 nodes[node_id] = node
                 stack.extend(str(child) for child in node.get("children", []))
 
-    detected_platforms = scan_result.get("detectedPlatforms", [])
+    detected_platforms = scan_result.get("primaryPlatforms") or scan_result.get("detectedPlatforms", [])
     handheld_native = any(platform in {"android-compose", "android-views", "swiftui", "uikit", "flutter"} for platform in detected_platforms)
     target_platforms = list(dict.fromkeys(
-        family for platform in scan_result.get("detectedPlatforms", [])
+        family for platform in detected_platforms
         if (family := target_family(platform))
     ))
     default_profiles = {
@@ -1346,6 +1499,17 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
         item for item in scan_result.get("components", [])
         if (str(item.get("source", {}).get("file") or ""), str(item.get("source", {}).get("symbol") or item.get("name") or "")) not in translated_screen_keys
     ]
+    translated_components = {
+        str(item.get("id") or ""): item
+        for item in translated.components
+        if isinstance(item, dict) and item.get("id")
+        and (str(item.get("source", {}).get("file") or ""), str(item.get("source", {}).get("symbol") or item.get("name") or "")) not in translated_screen_keys
+    }
+    catalog_components = [
+        {**item, **translated_components.pop(str(item.get("id") or ""), {})}
+        for item in catalog_components
+    ]
+    catalog_components.extend(translated_components.values())
     catalog_by_name: dict[str, list[dict[str, Any]]] = {}
     for item in catalog_components:
         catalog_by_name.setdefault(str(item.get("name") or ""), []).append(item)
@@ -1354,7 +1518,18 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
         matches = catalog_by_name.get(component_name, [])
         if len(matches) == 1:
             node["componentRef"] = matches[0]["id"]
-            node["standardRef"] = f"project.android.component.{slug(component_name, 'custom')}"
+            family = target_platforms[0] if len(target_platforms) == 1 else "shared"
+            node["standardRef"] = f"project.{family}.component.{slug(component_name, 'custom')}"
+    route_to_screen = {
+        str(route): str(screen.get("id") or "")
+        for screen in screens
+        for route in [screen.get("route"), *screen.get("routeAliases", [])]
+        if route
+    }
+    for node in nodes.values():
+        action = node.get("action")
+        if isinstance(action, dict) and action.get("type") == "navigate" and action.get("target") in route_to_screen:
+            action["target"] = route_to_screen[str(action["target"])]
     ir = {
         "version": 1,
         "project": {"name": Path(scan_result["repoRoot"]).name, "root": scan_result["repoRoot"]},
@@ -1404,7 +1579,7 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
             "items": theme_items,
         },
         "componentCatalog": {
-            "status": "inventory" if catalog_components else "ready",
+            "status": "ready" if all(item.get("inspection") == "mapped" for item in catalog_components) else "inventory",
             "enforce": bool(catalog_components),
             "components": catalog_components,
         },

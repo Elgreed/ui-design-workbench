@@ -277,9 +277,10 @@ def _compose_length(value: str, tokens: dict[str, Any], group: str = "spacing") 
     dimension = re.fullmatch(r"(-?\d+(?:\.\d+)?)\.(?:dp|sp)", clean)
     if dimension:
         return f"{dimension.group(1)}px"
-    number = re.fullmatch(r"-?\d+(?:\.\d+)?", clean)
+    number = re.fullmatch(r"-?\d+(?:\.\d+)?[fF]?", clean)
     if number:
-        return float(clean) if "." in clean else int(clean)
+        normalized = clean.rstrip("fF")
+        return float(normalized) if "." in normalized else int(normalized)
     token_name = _slug(clean).replace("-", "_")
     if token_name in tokens.get(group, {}):
         return f"${group}.{token_name}"
@@ -320,9 +321,9 @@ class ComposeAdapter:
     extensions = (".kt", ".kts")
     maturity = "structural"
     structural_tier = "translated"
-    visual_tier = "none"
+    visual_tier = "deterministic-projection"
     native_evidence_required = True
-    native_providers = ("android-compose-screenshot", "paparazzi", "roborazzi", "android-emulator")
+    native_providers = ("paparazzi", "roborazzi", "android-emulator")
     resource_resolution = ("R.string", "R.drawable", "R.mipmap", "common Material Icons")
     layout_features = ("size/fill/weight/aspectRatio", "directional padding", "Row/Column arrangement", "Box alignment", "basic typography")
     limitations = ("supported Compose primitives and modifiers only", "custom composables remain explicit unsupported entries")
@@ -420,11 +421,15 @@ class ComposeAdapter:
                     arrangement = _compose_named_value(args, "verticalArrangement")
                     if alignment in alignments: _set_compose(node, "layout.align", alignments[alignment], context, line, f"horizontalAlignment = {alignment}", self.id)
                     if arrangement in arrangements: _set_compose(node, "layout.justify", arrangements[arrangement], context, line, f"verticalArrangement = {arrangement}", self.id)
+                    spaced = re.fullmatch(r"Arrangement\.spacedBy\s*\(\s*([^,)]+)\s*\)", arrangement or "")
+                    if spaced: _set_compose(node, "layout.gap", _compose_length(spaced.group(1), result.tokens), context, line, f"verticalArrangement = {arrangement}", self.id)
                 if widget in {"Row", "LazyRow"}:
                     alignment = _compose_named_value(args, "verticalAlignment")
                     arrangement = _compose_named_value(args, "horizontalArrangement")
                     if alignment in alignments: _set_compose(node, "layout.align", alignments[alignment], context, line, f"verticalAlignment = {alignment}", self.id)
                     if arrangement in arrangements: _set_compose(node, "layout.justify", arrangements[arrangement], context, line, f"horizontalArrangement = {arrangement}", self.id)
+                    spaced = re.fullmatch(r"Arrangement\.spacedBy\s*\(\s*([^,)]+)\s*\)", arrangement or "")
+                    if spaced: _set_compose(node, "layout.gap", _compose_length(spaced.group(1), result.tokens), context, line, f"horizontalArrangement = {arrangement}", self.id)
                 if widget == "Box":
                     content_alignment = _compose_named_value(args, "contentAlignment")
                     if content_alignment and "Center" in content_alignment:

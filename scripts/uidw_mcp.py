@@ -47,6 +47,7 @@ def project_summary(repo: str | None, default_repo: Path) -> dict[str, Any]:
     configuration = uidw.configuration_context(config)
     setup_required = bool(configuration.get("setupRequired"))
     return {
+        "cliVersion": uidw.CLI_VERSION,
         "status": initialization.get("status"),
         "cache": initialization.get("initialization", {}).get("status"),
         "repoRoot": "<project-root>",
@@ -91,11 +92,28 @@ def scoped_payload(
 
 
 def compact_workbench_result(result: dict[str, Any]) -> dict[str, Any]:
-    return {
+    compact = {
         key: result.get(key)
         for key in ("version", "status", "previewFile", "url", "workflow", "initialization")
         if result.get(key) is not None
     }
+    compact["cliVersion"] = uidw.CLI_VERSION
+    check = result.get("check")
+    if isinstance(check, dict):
+        compact["check"] = {
+            "status": check.get("status"),
+            "level": check.get("level"),
+            "checks": {
+                key: {
+                    "status": value.get("status"),
+                    **({"issues": value.get("issues")} if value.get("issues") else {}),
+                    **({"errors": value.get("errors")} if value.get("errors") else {}),
+                }
+                for key, value in check.get("checks", {}).items()
+                if isinstance(value, dict)
+            },
+        }
+    return compact
 
 
 def configure_detail(repo: str | None, default_repo: Path, detail: str) -> dict[str, Any]:
@@ -141,8 +159,7 @@ def build_preview(
 
     ir_path, _ = _ir(root, ui_ir_file)
     destination = Path(output_dir).expanduser().resolve() if output_dir else ir_path.parent / "workbench"
-    cached_ir = paths["ir"].resolve()
-    allow_draft = ir_path.resolve() == cached_ir
+    allow_draft = False
     try:
         result = uidw.build_workbench(
             root,

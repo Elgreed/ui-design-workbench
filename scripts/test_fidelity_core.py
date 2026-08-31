@@ -54,6 +54,30 @@ class FidelityCoreTests(unittest.TestCase):
             self.assertEqual(flattened[name], value)
         self.assertTrue(any(expected["requiredProperty"] in node.get("provenance", {}) for node in result.nodes.values()))
 
+    def test_compose_preserves_solver_constraints(self):
+        source = ROOT / "Sample.kt"
+        text = '''
+@Composable
+fun Sample() {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Fixed", modifier = Modifier.width(40.dp))
+        Text("Flexible", modifier = Modifier.fillMaxWidth().weight(2f), fontSize = 14.sp, lineHeight = 18.sp)
+    }
+}
+'''
+        context = SourceContext(ROOT, source, "Sample.kt", text, ("android-compose",), "screen")
+        adapter = next(item for item in registered_adapters() if item.id == "compose")
+
+        result = adapter.translate(context)
+
+        row = next(node for node in result.nodes.values() if node.get("component") == "Row")
+        flexible = next(node for node in result.nodes.values() if node.get("text") == "Flexible")
+        self.assertEqual(row["layout"]["gap"], "12px")
+        self.assertEqual(flexible["layout"]["width"], "fill")
+        self.assertEqual(flexible["layout"]["grow"], 2)
+        self.assertEqual(flexible["style"]["fontSize"], "14px")
+        self.assertEqual(flexible["style"]["lineHeight"], "18px")
+
     def test_multiplatform_adapter_pack_golden(self):
         fixture = GOLDEN / "platform-pack"
         expected = json.loads((fixture / "expected.json").read_text(encoding="utf-8"))

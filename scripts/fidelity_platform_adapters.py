@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -100,7 +101,7 @@ class AndroidXmlAdapter:
     extensions = (".xml",)
     maturity = "structural"
     structural_tier = "translated"
-    visual_tier = "none"
+    visual_tier = "deterministic-projection"
     native_evidence_required = True
     native_providers = ("paparazzi", "roborazzi", "android-emulator")
     resource_resolution = ("values strings/colors/dimens", "styles", "bitmap/vector/shape drawables", "static layout includes")
@@ -402,8 +403,9 @@ class XamlAdapter:
     extensions = (".xaml",)
     maturity = "structural"
     structural_tier = "translated"
-    visual_tier = "none"
+    visual_tier = "deterministic-projection"
     native_evidence_required = True
+    native_providers = ("windows-app-sdk", "wpf-screenshot")
     limitations = ("templates and bindings are not evaluated", "custom controls remain unsupported")
     TYPES = {"Page": "container", "Window": "container", "UserControl": "container", "Grid": "container", "StackPanel": "container", "Canvas": "container", "Border": "card", "Expander": "card", "NavigationView": "container", "CommandBar": "container", "MenuBar": "container", "ToolBar": "container", "Frame": "container", "ScrollViewer": "container", "ListView": "list", "GridView": "list", "ItemsControl": "list", "TreeView": "list", "TextBlock": "text", "Label": "text", "Button": "button", "HyperlinkButton": "button", "AppBarButton": "button", "ToggleSwitch": "button", "ToggleButton": "button", "CheckBox": "button", "RadioButton": "button", "TextBox": "input", "PasswordBox": "input", "AutoSuggestBox": "input", "NumberBox": "input", "Image": "image", "SymbolIcon": "icon", "FontIcon": "icon", "ProgressBar": "container", "ProgressRing": "container", "Rectangle": "divider"}
     TYPES.update(adapter_type_map("windows", "xaml"))
@@ -483,6 +485,12 @@ DECLARATIVE_TYPES = {
     "Checkbox": "button", "Switch": "button", "CupertinoSwitch": "button", "Radio": "button", "AppBar": "container",
     "NavigationBar": "container", "BottomNavigationBar": "container", "LinearProgressIndicator": "container",
     "CircularProgressIndicator": "container", "SizedBox": "spacer", "Icon": "icon",
+    "CustomPaint": "container", "ClipRRect": "container", "DecoratedBox": "container", "ColoredBox": "container",
+    "InkWell": "button", "GestureDetector": "button", "Opacity": "container", "Align": "container",
+    "Positioned": "container", "AspectRatio": "container", "ConstrainedBox": "container", "Image": "image",
+    "AnimatedContainer": "container", "AnimatedAlign": "container", "AnimatedOpacity": "container",
+    "IgnorePointer": "container", "Semantics": "container", "Tooltip": "container", "Material": "container",
+    "ClipRect": "container", "RichText": "text",
 }
 
 
@@ -541,12 +549,33 @@ def _apple_color(expression: str, catalog: AppleResourceCatalog | None) -> tuple
     return (colors.get(named.group(1)), "apple-semantic-color") if named else (None, "")
 
 
-def _translate_declarative(context: SourceContext, adapter: str, screen_name: str, body: str, body_offset: int, platform: str, standard_prefix: str, tokens: dict[str, Any], apple_catalog: AppleResourceCatalog | None = None) -> AdapterResult:
+def _translate_declarative(
+    context: SourceContext,
+    adapter: str,
+    screen_name: str,
+    body: str,
+    body_offset: int,
+    platform: str,
+    standard_prefix: str,
+    tokens: dict[str, Any],
+    apple_catalog: AppleResourceCatalog | None = None,
+    extra_types: dict[str, str] | None = None,
+    emit_screen: bool = True,
+) -> AdapterResult:
     result = AdapterResult(adapter=adapter, tokens=tokens)
     screen_id, root_id = _slug(screen_name), f"{_slug(screen_name)}-root"
     result.nodes[root_id] = _root_node(context, adapter, f"project.{standard_prefix}.screen", _line(context.text, screen_name))
-    types = {**DECLARATIVE_TYPES, **adapter_type_map(platform, adapter)}
+    types = {**DECLARATIVE_TYPES, **adapter_type_map(platform, adapter), **(extra_types or {})}
     calls = _declarative_calls(body, set(types))
+    custom_names = set(extra_types or {})
+    calls = [
+        call for call in calls
+        if not any(
+            parent["widget"] in custom_names
+            and parent["start"] < call["start"] < parent["close"]
+            for parent in calls
+        )
+    ]
     records: list[tuple[dict[str, Any], str]] = []
     for index, call in enumerate(calls, start=1):
         widget, args = call["widget"], call["args"]
@@ -556,6 +585,10 @@ def _translate_declarative(context: SourceContext, adapter: str, screen_name: st
         line = context.text.count("\n", 0, body_offset + call["start"]) + 1
         native_prefix = "apple" if platform == "ios" else "macos" if platform == "macos" else "material3" if platform == "android" else "flutter" if platform == "flutter" else "project"
         node: dict[str, Any] = {"type": node_type, "component": widget, "layout": {}, "style": {}, "children": [], "source": {"file": context.source, "line": line, "symbol": screen_name}, "confidence": "high", "standardRef": f"{native_prefix}.{standard_prefix}.{widget.lower()}", "inheritsAppearance": True, "provenance": {"component": property_evidence(context.source, line, widget, adapter, "exact")}}
+        if widget in custom_names:
+            node["_adapterArgs"] = args
+        else:
+            node["appearanceSource"] = f"{platform}-framework-default"
         if platform == "flutter" and widget in {"Checkbox", "Switch", "CupertinoSwitch", "Radio"}:
             callback = re.search(r"\bonChanged\s*:\s*([^,\n]+)", args)
             if callback and callback.group(1).strip() != "null":
@@ -564,12 +597,29 @@ def _translate_declarative(context: SourceContext, adapter: str, screen_name: st
                 node["provenance"]["semantics.role"] = property_evidence(context.source, line, callback.group(0), adapter, "high")
         literal = re.search(r"(?:text\s*:\s*|label\s*:\s*)?[\"']([^\"']+)[\"']", args)
         if literal and node_type in {"text", "button", "input"}:
-            node["text"] = literal.group(1)
+            display_text = re.sub(
+                r"\$\{?([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\}?",
+                lambda match: match.group(1).split(".")[-1].replace("_", " ").title(),
+                literal.group(1),
+            )
+            node["text"] = display_text
             node["provenance"]["text"] = property_evidence(context.source, line, literal.group(0), adapter, "exact")
+            if display_text != literal.group(1):
+                node["mockData"] = {"source": "unresolved-expression", "seed": "stable"}
+                node["confidence"] = "approximate"
         localized = re.search(r'String\(\s*localized\s*:\s*"([^"]+)"', args)
         if localized and apple_catalog and (resolved := apple_catalog.localized(localized.group(1))):
             node["text"] = resolved.value
             node["provenance"]["text"] = property_evidence(resolved.source, 1, localized.group(0), adapter, resolved.confidence)
+        if platform == "flutter" and node_type == "text" and not node.get("text"):
+            expression = args.split(",", 1)[0].strip()
+            identifier = re.fullmatch(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*", expression)
+            if identifier:
+                label = expression.split(".")[-1].replace("_", " ").title()
+                node["text"] = label
+                node["mockData"] = {"source": expression, "seed": "stable"}
+                node["confidence"] = "approximate"
+                node["provenance"]["text"] = property_evidence(context.source, line, expression, adapter, "approximate")
         if widget in {"VStack", "LazyVStack", "Column", "List", "ListView", "SingleChildScrollView"}:
             _set(node, "layout.direction", "column", context, line, widget, adapter)
         if widget in {"HStack", "LazyHStack", "Row"}:
@@ -645,18 +695,83 @@ def _translate_declarative(context: SourceContext, adapter: str, screen_name: st
                 _set(node, "style.objectFit", "cover", context, line, ".scaledToFill()", adapter)
             elif ".scaledToFit()" in expression:
                 _set(node, "style.objectFit", "contain", context, line, ".scaledToFit()", adapter)
+        if platform == "flutter":
+            main_axis = re.search(r"\bmainAxisAlignment\s*:\s*MainAxisAlignment\.(start|end|center|spaceBetween|spaceAround|spaceEvenly)", args)
+            cross_axis = re.search(r"\bcrossAxisAlignment\s*:\s*CrossAxisAlignment\.(start|end|center|stretch|baseline)", args)
+            if main_axis:
+                _set(node, "layout.justify", {"spaceBetween": "between", "spaceAround": "around", "spaceEvenly": "evenly"}.get(main_axis.group(1), main_axis.group(1)), context, line, main_axis.group(0), adapter)
+            if cross_axis:
+                _set(node, "layout.align", cross_axis.group(1), context, line, cross_axis.group(0), adapter)
+            symmetric = re.search(r"padding\s*:\s*(?:const\s+)?EdgeInsets\.symmetric\s*\(([^)]*)\)", expression)
+            if symmetric:
+                horizontal = re.search(r"horizontal\s*:\s*([\w.]+)", symmetric.group(1))
+                vertical = re.search(r"vertical\s*:\s*([\w.]+)", symmetric.group(1))
+                if horizontal: _set(node, "layout.paddingHorizontal", _normalize_ref(horizontal.group(1)), context, line, horizontal.group(0), adapter)
+                if vertical: _set(node, "layout.paddingVertical", _normalize_ref(vertical.group(1)), context, line, vertical.group(0), adapter)
+            color_match = re.search(r"(?:backgroundColor|color)\s*:\s*((?:const\s+)?Color\s*\(\s*0x[0-9a-fA-F]+\s*\)|Colors\.\w+)", expression)
+            if color_match:
+                color_value = _flutter_color(color_match.group(1))
+                if color_value:
+                    target = "color" if node_type in {"text", "icon"} else "backgroundColor"
+                    _set(node, f"style.{target}", color_value, context, line, color_match.group(0), adapter)
+            radius = re.search(r"BorderRadius\.circular\s*\(\s*([\d.]+)", expression)
+            if radius: _set(node, "style.radius", _normalize_ref(radius.group(1)), context, line, radius.group(0), adapter)
+            font_size = re.search(r"fontSize\s*:\s*([\d.]+)", expression)
+            if font_size: _set(node, "style.fontSize", _normalize_ref(font_size.group(1)), context, line, font_size.group(0), adapter)
+            font_weight = re.search(r"fontWeight\s*:\s*FontWeight\.w(\d+)", expression)
+            if font_weight: _set(node, "style.fontWeight", int(font_weight.group(1)), context, line, font_weight.group(0), adapter)
+            opacity = re.search(r"\bopacity\s*:\s*([\d.]+)", args)
+            if opacity: _set(node, "style.opacity", float(opacity.group(1)), context, line, opacity.group(0), adapter)
+            for edge in ("top", "right", "bottom", "left"):
+                positioned = re.search(rf"\b{edge}\s*:\s*(-?[\d.]+)", args)
+                if positioned: _set(node, f"layout.{edge}", _normalize_ref(positioned.group(1)), context, line, positioned.group(0), adapter)
+            if widget == "Expanded":
+                grow = re.search(r"\bflex\s*:\s*(\d+)", args)
+                _set(node, "layout.grow", int(grow.group(1)) if grow else 1, context, line, grow.group(0) if grow else widget, adapter)
+            navigation = re.search(r"\b(?:go|push|pushReplacement|replace)\s*\(\s*['\"]([^'\"]+)", args)
+            callback = re.search(r"\b(?:onTap|onPressed)\s*:\s*(?!null)", args)
+            if navigation and callback:
+                node["action"] = {"type": "navigate", "target": navigation.group(1), "route": navigation.group(1)}
+                node["semantics"] = {"role": "link", "label": node.get("text") or widget}
+            asset = re.search(r"Image\.asset\s*\(\s*['\"]([^'\"]+)", expression)
+            if widget == "Image" and asset:
+                node["asset"] = asset.group(1)
+                node["provenance"]["asset"] = property_evidence(context.source, line, asset.group(0), adapter, "exact")
+            icon = re.search(r"Icons\.(\w+)", args)
+            if widget == "Icon" and icon:
+                node["iconName"] = icon.group(1)
         result.nodes[node_id] = node
         records.append((call, node_id))
     for call, node_id in records:
         parents = [(candidate, candidate_id) for candidate, candidate_id in records if candidate["start"] < call["start"] < candidate["containEnd"]]
         parent_id = max(parents, key=lambda item: item[0]["start"])[1] if parents else root_id
         result.nodes[parent_id]["children"].append(node_id)
-    known = set(types) | {"Color", "Font", "String", "EdgeInsets", "RoundedRectangle", "MaterialApp", "ThemeData"}
+    known = set(types) | {
+        "Color", "Font", "String", "EdgeInsets", "RoundedRectangle", "MaterialApp", "ThemeData",
+        "BoxDecoration", "BoxShadow", "Shadow", "Offset", "LinearGradient", "RadialGradient", "SweepGradient",
+        "TextStyle", "TextSpan", "ColorScheme", "BoxConstraints", "Duration", "ValueKey", "InputDecoration",
+    }
     for unknown in re.finditer(r"\b([A-Z]\w*)\s*(?:\(|\{)", body):
-        if unknown.group(1) not in known:
+        unknown_name = unknown.group(1)
+        flutter_visual_gap = bool(re.search(r"(?:Widget|View|Card|Tile|Button|Screen|Panel|Header|Footer|Container)$", unknown_name))
+        if unknown_name not in known and (platform != "flutter" or flutter_visual_gap):
             result.unsupported.append({"adapter": adapter, "file": context.source, "line": context.text.count("\n", 0, body_offset + unknown.start()) + 1, "expression": unknown.group(1), "reason": "unsupported-declarative-component"})
-    result.screens.append({"id": screen_id, "name": screen_name, "root": root_id, "route": "", "platform": platform, "source": {"file": context.source, "line": _line(context.text, screen_name), "symbol": screen_name}, "confidence": "high"})
+    if emit_screen:
+        result.screens.append({"id": screen_id, "name": screen_name, "root": root_id, "route": "", "platform": platform, "source": {"file": context.source, "line": _line(context.text, screen_name), "symbol": screen_name}, "confidence": "high"})
     return result
+
+
+def _flutter_color(expression: str) -> str | None:
+    raw = re.search(r"0x([0-9a-fA-F]{6,8})", expression)
+    if raw:
+        value = raw.group(1)
+        return f"#{value[-6:]}".lower()
+    named = re.search(r"Colors\.(\w+)", expression)
+    return {
+        "black": "#000000", "white": "#ffffff", "red": "#f44336", "green": "#4caf50",
+        "blue": "#2196f3", "grey": "#9e9e9e", "gray": "#9e9e9e", "orange": "#ff9800",
+        "yellow": "#ffeb3b", "purple": "#9c27b0", "transparent": "transparent",
+    }.get(named.group(1)) if named else None
 
 
 class SwiftUIAdapter:
@@ -665,7 +780,7 @@ class SwiftUIAdapter:
     extensions = (".swift",)
     maturity = "structural"
     structural_tier = "translated"
-    visual_tier = "none"
+    visual_tier = "deterministic-projection"
     native_evidence_required = True
     native_providers = ("xcode-preview", "swift-snapshot-testing", "apple-simulator")
     resource_resolution = ("Asset Catalog images/colors", "Localizable.strings", "common SF Symbols")
@@ -717,13 +832,233 @@ class FlutterAdapter:
     extensions = (".dart",)
     maturity = "structural"
     structural_tier = "translated"
-    visual_tier = "none"
+    visual_tier = "deterministic-projection"
     native_evidence_required = True
     native_providers = ("flutter-golden", "flutter-device")
-    limitations = ("custom widgets remain unsupported", "platform-adaptive runtime branches are not executed")
+    limitations = ("runtime branches are not executed", "custom painters require golden or device evidence")
+
+    WIDGET_BASES = {
+        "StatelessWidget", "StatefulWidget", "ConsumerWidget", "ConsumerStatefulWidget",
+        "HookWidget", "HookConsumerWidget",
+    }
+
+    def __init__(self) -> None:
+        self._prepared = False
+        self._classes: dict[str, dict[str, Any]] = {}
+        self._screen_names: set[str] = set()
+        self._localizations: dict[str, str] = {}
+        self._constants: dict[str, str] = {}
+        self._prepared_sources: set[str] = set()
+
+    @staticmethod
+    def _expression_end(text: str, start: int) -> int:
+        depths = {"(": 0, "[": 0, "{": 0}
+        pairs = {")": "(", "]": "[", "}": "{"}
+        quote = ""
+        escaped = False
+        for index in range(start, len(text)):
+            char = text[index]
+            if quote:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == quote:
+                    quote = ""
+                continue
+            if char in {"'", '"'}:
+                quote = char
+            elif char in depths:
+                depths[char] += 1
+            elif char in pairs:
+                depths[pairs[char]] = max(0, depths[pairs[char]] - 1)
+            elif char == ";" and not any(depths.values()):
+                return index
+        return len(text)
+
+    @classmethod
+    def _build_body(cls, text: str, start: int, end: int) -> tuple[str, int] | None:
+        segment = text[start:end]
+        block = re.search(r"\bWidget\s+build\s*\([^)]*\)\s*\{", segment)
+        if block:
+            opening = start + block.end() - 1
+            closing = _balanced_close(text, opening, "{", "}")
+            if closing is not None:
+                body = text[opening + 1:closing]
+                returned = re.search(r"\breturn\s+(.+)", body, re.S)
+                return ((returned.group(1) if returned else body), opening + 1)
+        arrow = re.search(r"\bWidget\s+build\s*\([^)]*\)\s*=>", segment)
+        if arrow:
+            body_start = start + arrow.end()
+            body_end = cls._expression_end(text, body_start)
+            return text[body_start:body_end], body_start
+        return None
+
+    @staticmethod
+    def _fields(class_body: str) -> list[str]:
+        return list(dict.fromkeys(
+            match.group(1)
+            for match in re.finditer(
+                r"\bfinal\s+(?:[A-Za-z_][\w<>?,. ]*\s+)([a-zA-Z_]\w*)\s*;",
+                class_body,
+            )
+        ))
+
+    def prepare(self, contexts: list[SourceContext]) -> None:
+        self._prepared = True
+        self._classes = {}
+        self._screen_names = set()
+        self._localizations = {}
+        self._constants = {}
+        flutter_contexts = [context for context in contexts if self.supports(context)]
+        self._prepared_sources = {context.source for context in flutter_contexts}
+        roots = {context.root.resolve() for context in flutter_contexts}
+        for root in roots:
+            arb_files = sorted(root.glob("**/*_en.arb")) or sorted(root.glob("**/*.arb"))
+            for path in arb_files:
+                try:
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                for key, value in payload.items():
+                    if not str(key).startswith("@") and isinstance(value, str):
+                        self._localizations.setdefault(str(key), value)
+        class_pattern = re.compile(r"\bclass\s+(_?[A-Z]\w*)\s+extends\s+([A-Za-z_]\w*)(?:\s*<\s*([^>]+)\s*>)?[^\{]*\{")
+        state_builds: dict[str, dict[str, Any]] = {}
+        for context in flutter_contexts:
+            for constant in re.finditer(r"\b(?:static\s+)?const\s+(?:String|double|int|Color)?\s*(\w+)\s*=\s*([^;]+);", context.text):
+                self._constants.setdefault(constant.group(1), constant.group(2).strip())
+            for klass in class_pattern.finditer(context.text):
+                opening = context.text.find("{", klass.start())
+                closing = _balanced_close(context.text, opening, "{", "}")
+                if closing is None:
+                    continue
+                name, base, generic = klass.group(1), klass.group(2), (klass.group(3) or "").strip()
+                class_body = context.text[opening + 1:closing]
+                build = self._build_body(context.text, opening + 1, closing)
+                entry = {
+                    "name": name, "base": base, "context": context, "body": build[0] if build else "",
+                    "bodyOffset": build[1] if build else opening + 1, "fields": self._fields(class_body),
+                }
+                if base in self.WIDGET_BASES:
+                    self._classes[name] = entry
+                elif base in {"State", "ConsumerState"} and generic and build:
+                    state_builds[generic.split(",", 1)[0].strip()] = entry
+            for route_target in re.finditer(r"\b(?:builder|pageBuilder)\s*:[^=]*=>\s*(?:const\s+)?([A-Z]\w*)\s*\(", context.text):
+                self._screen_names.add(route_target.group(1))
+            for route_target in re.finditer(r"\breturn\s+(?:const\s+)?([A-Z]\w*)\s*\(", context.text):
+                if "GoRoute" in context.text:
+                    self._screen_names.add(route_target.group(1))
+        for widget_name, state in state_builds.items():
+            if widget_name in self._classes:
+                self._classes[widget_name]["body"] = state["body"]
+                self._classes[widget_name]["bodyOffset"] = state["bodyOffset"]
+                self._classes[widget_name]["context"] = state["context"]
+        if not self._screen_names:
+            self._screen_names.update(
+                name for name in self._classes
+                if name.endswith(("Page", "Screen", "View", "Dialog"))
+            )
 
     def supports(self, context: SourceContext) -> bool:
         return context.path.suffix.lower() == ".dart" and "flutter" in context.platforms
+
+    @staticmethod
+    def _split_args(args: str) -> list[str]:
+        result: list[str] = []
+        start = 0
+        depths = {"(": 0, "[": 0, "{": 0}
+        pairs = {")": "(", "]": "[", "}": "{"}
+        quote = ""
+        escaped = False
+        for index, char in enumerate(args):
+            if quote:
+                if escaped: escaped = False
+                elif char == "\\": escaped = True
+                elif char == quote: quote = ""
+                continue
+            if char in {"'", '"'}: quote = char
+            elif char in depths: depths[char] += 1
+            elif char in pairs: depths[pairs[char]] = max(0, depths[pairs[char]] - 1)
+            elif char == "," and not any(depths.values()):
+                result.append(args[start:index].strip())
+                start = index + 1
+        tail = args[start:].strip()
+        if tail: result.append(tail)
+        return result
+
+    def _bindings(self, entry: dict[str, Any], args: str) -> dict[str, str]:
+        named: dict[str, str] = {}
+        positional: list[str] = []
+        for item in self._split_args(args):
+            match = re.match(r"([A-Za-z_]\w*)\s*:\s*(.+)", item, re.S)
+            if match: named[match.group(1)] = match.group(2).strip()
+            elif item and not item.startswith(("key:", "super.")): positional.append(item)
+        for field, value in zip(entry.get("fields", []), positional):
+            named.setdefault(field, value)
+        return named
+
+    def _resolve_localizations(self, body: str) -> str:
+        pattern = re.compile(r"(?:\bcontext\.)?\bl10n\.(\w+)(?:\s*\(([^()]*)\))?")
+        def value(match: re.Match[str]) -> str:
+            template = self._localizations.get(match.group(1))
+            if template is None:
+                return match.group(1).replace("_", " ").strip().title()
+            values = self._split_args(match.group(2) or "")
+            placeholders = re.findall(r"\{(\w+)\}", template)
+            for index, placeholder in enumerate(placeholders):
+                raw = values[index].strip() if index < len(values) else placeholder.replace("_", " ").title()
+                literal = re.fullmatch(r"['\"](.*)['\"]", raw, re.S)
+                template = template.replace("{" + placeholder + "}", literal.group(1) if literal else raw)
+            return template
+        interpolation = re.compile(r"\$\{((?:context\.)?l10n\.\w+(?:\s*\([^{}]*\))?)\}")
+        body = interpolation.sub(lambda match: value(pattern.fullmatch(match.group(1)) or match), body)
+        return pattern.sub(lambda match: repr(value(match)), body)
+
+    def _resolved_body(self, entry: dict[str, Any], bindings: dict[str, str]) -> str:
+        body = str(entry.get("body") or "")
+        for name, value in sorted(bindings.items(), key=lambda item: len(item[0]), reverse=True):
+            body = re.sub(rf"\b{re.escape(name)}\b", value, body)
+        for name, value in sorted(self._constants.items(), key=lambda item: len(item[0]), reverse=True):
+            body = re.sub(rf"\b{re.escape(name)}\b", value, body)
+        return self._resolve_localizations(body)
+
+    def _translate_class(
+        self,
+        class_name: str,
+        namespace: str,
+        tokens: dict[str, Any],
+        bindings: dict[str, str] | None = None,
+        stack: tuple[str, ...] = (),
+    ) -> AdapterResult:
+        entry = self._classes[class_name]
+        body = self._resolved_body(entry, bindings or {})
+        context = entry["context"]
+        custom_types = {name: "container" for name in self._classes}
+        current = _translate_declarative(
+            context, self.id, namespace, body, int(entry["bodyOffset"]), "flutter", "flutter", tokens,
+            extra_types=custom_types,
+        )
+        for node_id, node in list(current.nodes.items()):
+            component = str(node.get("component") or "")
+            raw_args = str(node.pop("_adapterArgs", ""))
+            if component not in self._classes or component in stack or component == class_name:
+                continue
+            child_entry = self._classes[component]
+            child = self._translate_class(
+                component,
+                f"{namespace}-{node_id}-{component}",
+                tokens,
+                self._bindings(child_entry, raw_args),
+                (*stack, class_name),
+            )
+            child_root = str(child.screens[0]["root"])
+            node["children"] = [*node.get("children", []), *child.nodes[child_root].get("children", [])]
+            for child_id, child_node in child.nodes.items():
+                if child_id != child_root:
+                    current.nodes[child_id] = child_node
+            current.unsupported.extend(child.unsupported)
+        return current
 
     def translate(self, context: SourceContext) -> AdapterResult:
         combined = AdapterResult(adapter=self.id)
@@ -731,17 +1066,40 @@ class FlutterAdapter:
         for match in re.finditer(r"(?:static\s+)?const\s+(?:Color|double)\s+(\w+)\s*=\s*([^;]+);", context.text):
             group = "colors" if "Color" in match.group(0).split("=")[0] else "spacing"
             tokens[group][_slug(match.group(1)).replace("-", "_")] = {"value": match.group(2).strip(), "source": {"file": context.source, "line": _line(context.text, match.group(0))}, "adapter": self.id}
-        for klass in re.finditer(r"\bclass\s+([A-Z]\w*)\s+extends\s+(?:StatelessWidget|StatefulWidget)\s*\{", context.text):
-            class_end = _balanced_close(context.text, context.text.find("{", klass.start()), "{", "}")
-            if class_end is None: continue
-            segment = context.text[klass.end():class_end]
-            build = re.search(r"\bWidget\s+build\s*\([^)]*\)\s*\{", segment)
-            if not build: continue
-            build_start = klass.end() + build.end()
-            build_end = _balanced_close(context.text, build_start - 1, "{", "}")
-            if build_end is None: continue
-            current = _translate_declarative(context, self.id, klass.group(1), context.text[build_start:build_end], build_start, "flutter", "flutter", tokens)
-            combined.screens.extend(current.screens); combined.nodes.update(current.nodes); combined.unsupported.extend(current.unsupported)
+        known_source = context.source in self._prepared_sources
+        if not self._prepared or not known_source:
+            self.prepare([context])
+            screen_names = {
+                name for name, entry in self._classes.items()
+                if entry["context"].source == context.source and entry.get("body")
+            }
+        else:
+            screen_names = {
+                name for name in self._screen_names
+                if name in self._classes
+                and self._classes[name]["context"].source == context.source
+                and self._classes[name].get("body")
+            }
+        for name in sorted(screen_names, key=lambda item: int(self._classes[item]["bodyOffset"])):
+            current = self._translate_class(name, name, tokens)
+            current.screens[0]["name"] = name
+            current.screens[0]["source"]["symbol"] = name
+            combined.screens.extend(current.screens)
+            combined.nodes.update(current.nodes)
+            combined.unsupported.extend(current.unsupported)
+        for name, entry in self._classes.items():
+            if entry["context"].source != context.source or not entry.get("body"):
+                continue
+            combined.components.append({
+                "id": f'{entry["context"].source}#{name}',
+                "name": name,
+                "platform": "flutter",
+                "kind": "project",
+                "source": {"file": entry["context"].source, "line": _line(entry["context"].text, f"class {name}"), "symbol": name},
+                "inspection": "mapped",
+                "confidence": "high",
+                "variants": [], "states": [], "tokenRefs": [],
+            })
         combined.tokens = tokens
         return combined
 
@@ -752,7 +1110,7 @@ class AppleInterfaceXmlAdapter:
     extensions = (".storyboard", ".xib")
     maturity = "structural"
     structural_tier = "translated"
-    visual_tier = "none"
+    visual_tier = "deterministic-projection"
     native_evidence_required = True
     native_providers = ("swift-snapshot-testing", "apple-simulator")
     resource_resolution = ("Asset Catalog images/colors", "authored interface strings")

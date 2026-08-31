@@ -125,15 +125,15 @@ class NativeRenderTests(unittest.TestCase):
         }
         self.assertTrue(any("must be relative" in error for error in validate_native_state(state)))
 
-    def test_native_adapters_do_not_claim_visual_fidelity(self) -> None:
+    def test_source_adapters_require_native_evidence_for_visual_verification(self) -> None:
         capabilities = {item["id"]: item for item in adapter_capabilities()}
-        for adapter_id in ("compose", "android-xml", "swiftui", "apple-interface-xml"):
+        for adapter_id in ("compose", "android-xml", "swiftui", "apple-interface-xml", "flutter"):
             self.assertEqual(capabilities[adapter_id]["maturity"], "structural")
-            self.assertEqual(capabilities[adapter_id]["visualTier"], "none")
+            self.assertEqual(capabilities[adapter_id]["visualTier"], "deterministic-projection")
             self.assertTrue(capabilities[adapter_id]["nativeEvidenceRequired"])
             self.assertTrue(capabilities[adapter_id]["nativeProviders"])
 
-    def test_mobile_html_is_labeled_as_structural_until_native_evidence_exists(self) -> None:
+    def test_mobile_html_marks_runtime_free_projection_as_not_native_verified(self) -> None:
         ir = {
             "project": {"name": "Mobile"},
             "platforms": ["android"],
@@ -147,10 +147,57 @@ class NativeRenderTests(unittest.TestCase):
         preview = render_html(ir)
 
         self.assertTrue(audit["nativeEvidenceRequired"])
-        self.assertEqual(audit["visualFidelityTier"], "structural")
+        self.assertEqual(audit["visualFidelityTier"], "structural-projection")
+        self.assertTrue(audit["runtimeFree"])
         self.assertFalse(audit["nativeExecutionStarted"])
-        self.assertIn("Нативный снимок:</span> не проверен", preview)
+        self.assertIn("Нативный снимок:</span>", preview)
         self.assertIn("визуальная точность не подтверждена", preview)
+        self.assertIn("deterministic-box-v1", preview)
+
+    def test_partial_projection_remains_explicit_fidelity_gap(self) -> None:
+        ir = {
+            "project": {"name": "Partial mobile"},
+            "platforms": ["android"],
+            "design": {"mode": "reconstruct", "targetPlatforms": ["android"]},
+            "fidelity": {"status": "translated", "sourceDerived": True},
+            "screens": [{"id": "home", "name": "Home", "root": "root", "platform": "android"}],
+            "nodes": {
+                "root": {"type": "container", "children": ["title"], "layout": {"direction": "grid"}},
+                "title": {"type": "text", "text": "Home", "layout": {"width": 100, "height": 24}},
+            },
+        }
+
+        audit = fidelity_audit(ir)
+        ir["fidelityAudit"] = audit
+        preview = render_html(ir)
+
+        self.assertTrue(audit["nativeEvidenceRequired"])
+        self.assertEqual(audit["nativeEvidenceCoverage"], 0)
+        self.assertEqual(audit["visualFidelityTier"], "structural-projection")
+        self.assertEqual(audit["projectionCoverage"], 0)
+        self.assertTrue(audit["projectionGaps"])
+        self.assertIn('"status":"partial"', preview)
+        self.assertIn("context?.status==='solved'?context:null", preview)
+
+    def test_web_partial_projection_cannot_claim_deterministic_fidelity(self) -> None:
+        ir = {
+            "project": {"name": "Partial web"},
+            "platforms": ["web"],
+            "design": {"mode": "reconstruct", "targetPlatforms": ["web"]},
+            "fidelity": {"status": "translated", "sourceDerived": True},
+            "screens": [{"id": "home", "name": "Home", "root": "root", "platform": "web"}],
+            "nodes": {
+                "root": {"type": "container", "children": ["title"], "layout": {"direction": "grid"}},
+                "title": {"type": "text", "text": "Home", "layout": {"width": 100, "height": 24}},
+            },
+        }
+
+        audit = fidelity_audit(ir)
+
+        self.assertFalse(audit["nativeEvidenceRequired"])
+        self.assertEqual(audit["visualFidelityTier"], "structural-projection")
+        self.assertEqual(audit["projectionCoverage"], 0)
+        self.assertTrue(any("projection is incomplete" in reason for reason in audit["reasons"]))
 
     def test_cli_native_status_does_not_initialize_or_execute_a_native_build(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

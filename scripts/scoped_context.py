@@ -105,14 +105,19 @@ def _node_ids_for_scope(
         for child in node.get("children", []):
             parents[str(child)] = str(node_id)
 
-    def descendants(node_id: str) -> None:
+    def descendants(node_id: str, visiting: set[str] | None = None) -> None:
+        visiting = visiting or set()
+        if node_id in visiting:
+            raise ValueError(f"Cyclic node hierarchy detected at {node_id}")
         if node_id in selected or node_id not in nodes:
             return
+        visiting.add(node_id)
         selected.add(node_id)
         node = nodes[node_id]
         if isinstance(node, dict):
             for child in node.get("children", []):
-                descendants(str(child))
+                descendants(str(child), visiting)
+        visiting.remove(node_id)
 
     for screen in screens:
         descendants(str(screen.get("root", "")))
@@ -120,7 +125,11 @@ def _node_ids_for_scope(
         node_id = str(finding.get("nodeId") or "")
         if node_id:
             descendants(node_id)
+            ancestors_seen: set[str] = set()
             while node_id in parents:
+                if node_id in ancestors_seen:
+                    raise ValueError(f"Cyclic node hierarchy detected at {node_id}")
+                ancestors_seen.add(node_id)
                 node_id = parents[node_id]
                 selected.add(node_id)
     return selected

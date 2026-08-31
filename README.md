@@ -63,7 +63,7 @@ uidw --repo <repo> review --output-dir <review-dir> --level full
 - Incremental scans that reprocess only changed UI files.
 - Property-level evidence and explicit unsupported gaps instead of guessed UI.
 - Sparse review patches and a separate, authorized source-apply step.
-- Structural Android and Apple resource projection, plus discovery of available native capture paths.
+- Runtime-free Android, Apple, and Flutter source projection with deterministic geometry for the supported subset; native evidence is required only before claiming visual or pixel parity and is never launched automatically.
 
 Supported source families include Web, React, Vue, Svelte, Jetpack Compose, Android Views XML, SwiftUI, Storyboard/XIB, WinUI/WPF, and Flutter.
 
@@ -86,8 +86,8 @@ Run `uidw help overview`, `uidw help advanced`, or `uidw <command> --help` for d
 
 ## Accuracy and safety
 
-- HTML is a static source projection, not proof of runtime or pixel parity.
-- Android and Apple translation remains structural until a source-matched native capture exists.
+- HTML is a deterministic runtime-free source projection for the supported shared layout subset, not proof of runtime or pixel parity.
+- Android, Apple, and Flutter translation uses deterministic projection geometry for the supported shared layout subset; without separate native evidence it remains a structural projection, not proof of runtime or pixel parity.
 - Unsupported bindings, custom drawing, runtime data, and platform behavior remain explicit gaps.
 - Preview and review keep application source read-only; applying a proposal is a separate step.
 - Derived cache and review state live outside the target repository by default.
@@ -112,4 +112,4 @@ A Windows `.exe` is not published yet. PyPI + `pipx` is the primary cross-platfo
 - [IR schema](references/ir-schema.md)
 - [Review workflow](references/review-workflow.md)
 
-Current CLI version: `0.6.3`.
+Current CLI version: `0.6.4`.

@@ -21,8 +21,8 @@ from unittest import mock
 
 import coverage_report as coverage_module
 import uidw as uidw_module
-from render_preview import render_html
-from uidw import finding_report, help_topic, install_skill, pack_artifact, prepare_agent_job, read_json, unpack_artifact, validate_artifact, write_json
+from render_preview import render_html, resolve_assets
+from uidw import finding_report, help_topic, import_review_result, install_skill, pack_artifact, prepare_agent_job, read_json, unpack_artifact, validate_artifact, write_json
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -313,6 +313,8 @@ class CliPackagingTests(unittest.TestCase):
         self.assertNotIn("codex-handoff-panel", generic)
         self.assertNotIn("uiIr:ir", generic)
         self.assertIn("ui-ir.patch.json", generic)
+        self.assertIn("stableReviewJson", generic)
+        self.assertIn("неизменяемый baseline-узел", generic)
 
     def test_portable_bundle_round_trip_has_no_absolute_source_paths(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -334,6 +336,97 @@ class CliPackagingTests(unittest.TestCase):
             with zipfile.ZipFile(bundle) as archive:
                 self.assertNotIn(str(root), archive.read("ui-ir.json").decode("utf-8"))
                 self.assertFalse(manifest["sourceIncluded"])
+
+    def test_embedded_assets_reject_attribute_injection(self) -> None:
+        malicious = 'data:image/png;base64,eA==" onerror="document.body.dataset.pwned=1'
+        ir = {
+            "project": {"name": "Unsafe"},
+            "screens": [{"id": "home", "name": "Home", "root": "image"}],
+            "nodes": {"image": {"type": "image", "asset": malicious}},
+        }
+
+        resolved = resolve_assets(ir)
+        preview = render_html(resolved)
+
+        self.assertNotIn("resolvedAsset", resolved["nodes"]["image"])
+        self.assertIn("allowlisted base64", resolved["nodes"]["image"]["assetError"])
+        self.assertEqual(preview.count('src="${esc(n.resolvedAsset)}"'), 2)
+        self.assertNotIn('src="${n.resolvedAsset}"', preview)
+
+    def test_complete_review_import_preserves_immutable_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            ir_path = root / "ui-ir.json"
+            result_path = root / "result.json"
+            output = root / "merged.json"
+            source = {
+                "version": 1,
+                "project": {"name": "Sample"},
+                "screens": [{"id": "home", "name": "Home", "root": "root"}],
+                "nodes": {"root": {"type": "container", "children": []}},
+                "review": {
+                    "revision": "review-1",
+                    "baselineHash": "sealed",
+                    "baselineVersion": "baseline",
+                    "versions": [{"id": "baseline", "kind": "baseline", "nodeOverrides": {}}],
+                    "audit": {"findings": []},
+                },
+            }
+            write_json(ir_path, source)
+            malicious = json.loads(json.dumps(source))
+            malicious["nodes"]["root"]["children"] = ["replacement"]
+            write_json(result_path, {"requestRevision": "review-1", "uiIr": malicious})
+
+            with self.assertRaisesRegex(ValueError, "immutable baseline node"):
+                import_review_result(ir_path, result_path, output)
+            self.assertFalse(output.exists())
+
+            returned = json.loads(json.dumps(source))
+            returned["nodes"]["proposal-copy"] = {"type": "text", "text": "Improved"}
+            returned["review"]["versions"].append({
+                "id": "proposal-1",
+                "kind": "proposal",
+                "parent": "baseline",
+                "nodeOverrides": {"root": {"style": {"background": "#fff"}}},
+            })
+            returned["review"]["audit"]["findings"] = [{"id": "finding-1", "title": "Issue", "screenId": "home"}]
+            write_json(result_path, {"requestRevision": "review-1", "uiIr": returned})
+
+            import_review_result(ir_path, result_path, output)
+            merged = read_json(output, {})
+
+            self.assertEqual(merged["nodes"]["root"], source["nodes"]["root"])
+            self.assertIn("proposal-copy", merged["nodes"])
+            self.assertEqual(merged["review"]["activeVersion"], "proposal-1")
+            self.assertEqual(merged["review"]["audit"]["findings"][0]["id"], "finding-1")
+
+    def test_unpack_rejects_manifestless_and_unlisted_files_before_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifestless = root / "manifestless.zip"
+            with zipfile.ZipFile(manifestless, "w") as archive:
+                archive.writestr("arbitrary.txt", "unexpected")
+            first_output = root / "first"
+
+            with self.assertRaisesRegex(ValueError, "manifest"):
+                unpack_artifact(manifestless, first_output)
+            self.assertFalse(first_output.exists())
+
+            unexpected = root / "unexpected.zip"
+            manifest = {
+                "version": 1,
+                "type": "ui-design-workbench-bundle",
+                "files": [{"path": "ui-ir.json", "sha256": "0" * 64, "bytes": 2}],
+            }
+            with zipfile.ZipFile(unexpected, "w") as archive:
+                archive.writestr("uidw-bundle.json", json.dumps(manifest))
+                archive.writestr("ui-ir.json", "{}")
+                archive.writestr("extra.txt", "unexpected")
+            second_output = root / "second"
+
+            with self.assertRaisesRegex(ValueError, "do not match manifest"):
+                unpack_artifact(unexpected, second_output)
+            self.assertFalse(second_output.exists())
 
 
 if __name__ == "__main__":

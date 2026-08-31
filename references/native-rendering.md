@@ -1,8 +1,8 @@
 # Native rendering contract
 
-Source analysis and native rendering are separate stages. The base UI IR remains deterministic and portable; native screenshots, geometry, and semantic trees live in `native-render-state.json` in the UIDW cache.
+Source analysis and deterministic HTML projection are the default Workbench reconstruction path. They remain buildless and runtime-free. Native-render discovery is optional and read-only during reconstruction, but matching native evidence is required before visual or pixel parity can be claimed. External screenshots, geometry, or semantic trees remain isolated in `native-render-state.json` and never modify the base UI IR.
 
-The default Android projection may resolve source resources and deterministic layout semantics before native verification. This improves ordinary mockups but does not change the fidelity level from `structural`: resource resolution is evidence about inputs, not proof of the platform's final layout pass.
+The default projection resolves source resources and supported layout semantics through the shared deterministic solver. Adapter capability `deterministic-projection` describes source-to-HTML transfer; the workbench reports native targets as `structural-projection` until matching native evidence exists.
 
 ## Fidelity levels
 

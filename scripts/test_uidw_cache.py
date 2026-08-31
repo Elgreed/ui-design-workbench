@@ -8,6 +8,7 @@ import io
 import json
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -37,6 +38,32 @@ class IncrementalCacheTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.env.stop()
         self.temp.cleanup()
+
+    def test_live_stale_lock_respects_timeout(self) -> None:
+        lock = self.base / "locks" / ".state.lock"
+        with uidw.state_lock(lock):
+            stale = time.time() - 121
+            os.utime(lock, (stale, stale))
+            started = time.monotonic()
+            with self.assertRaises(TimeoutError):
+                with uidw.state_lock(lock, timeout_seconds=0.1):
+                    self.fail("A live lock must not be replaced")
+            self.assertLess(time.monotonic() - started, 1)
+
+    def test_scanner_ignores_file_symlinks_outside_repository(self) -> None:
+        outside = self.base / "OutsideSecret.tsx"
+        outside.write_text("export function SecretScreen(){ return <main>secret</main>; }", encoding="utf-8")
+        linked = self.repo / "LinkedScreen.tsx"
+        try:
+            linked.symlink_to(outside)
+        except OSError as exc:
+            self.skipTest(f"File symlinks are unavailable: {exc}")
+
+        uidw.initialize(self.repo)
+        scan = uidw.read_json(uidw.state_paths(self.repo)["scan"], {})
+
+        self.assertNotIn("LinkedScreen.tsx", {item.get("path") for item in scan.get("uiFiles", [])})
+        self.assertNotIn("LinkedScreen.tsx", {item.get("file") for item in scan.get("screens", [])})
 
     def test_default_init_uses_user_cache_and_builds_graph(self) -> None:
         report = uidw.initialize(self.repo)
