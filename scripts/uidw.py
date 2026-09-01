@@ -53,7 +53,7 @@ from scan_ui import (
 
 
 CACHE_VERSION = 8
-CLI_VERSION = "0.6.6"
+CLI_VERSION = "0.6.7"
 CONFIG_VERSION = 5
 STATE_DIR_NAME = ".ui-design-workbench"
 CONFIG_NAME = "config.json"
@@ -1036,6 +1036,24 @@ def prune_missing_token_refs(value: Any, tokens: dict[str, Any]) -> Any:
     return copy.deepcopy(value)
 
 
+def prune_orphan_provenance(node: dict[str, Any]) -> dict[str, Any]:
+    """Remove evidence entries for authored properties pruned during cache migration."""
+    provenance = node.get("provenance")
+    if not isinstance(provenance, dict):
+        return node
+
+    def path_exists(path: str) -> bool:
+        current: Any = node
+        for part in path.split("."):
+            if not isinstance(current, dict) or part not in current:
+                return False
+            current = current[part]
+        return True
+
+    node["provenance"] = {path: evidence for path, evidence in provenance.items() if path_exists(str(path))}
+    return node
+
+
 def merge_authored_state(
     generated: dict[str, Any],
     design_model: dict[str, Any],
@@ -1074,6 +1092,7 @@ def merge_authored_state(
         cleaned_authored = prune_missing_token_refs(authored, merged_tokens)
         if not isinstance(cleaned_authored, dict):
             continue
+        prune_orphan_provenance(cleaned_authored)
         existing = result.setdefault("nodes", {}).get(node_id, {})
         merged = copy.deepcopy(existing)
         for key, value in cleaned_authored.items():
@@ -1085,6 +1104,7 @@ def merge_authored_state(
             merged["sourceState"] = "stale"
         else:
             merged.pop("sourceState", None)
+        prune_orphan_provenance(merged)
         result["nodes"][node_id] = merged
 
     fixtures = design_model.get("scenarioFixtures", {})

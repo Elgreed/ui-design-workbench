@@ -37,8 +37,9 @@ class AndroidXmlSupportTests(unittest.TestCase):
         self.assertNotIn("layout", components)
         self.assertNotIn("data", components)
         text_node = next(node for node in result.nodes.values() if node.get("type") == "text")
-        self.assertEqual(text_node["text"], "$strings.welcome")
+        self.assertEqual(text_node["text"], "@string/welcome")
         self.assertIn("unresolved-constraint-equations", {item["reason"] for item in result.unsupported})
+        self.assertIn("unresolved-android-resource", {item["reason"] for item in result.unsupported})
 
     def test_android_resources_keep_strings_out_of_spacing(self) -> None:
         text = f'''<resources>
@@ -95,10 +96,11 @@ class AndroidXmlSupportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             layout = root / "app/src/main/res/layout"
+            landscape_layout = root / "app/src/main/res/layout-land"
             navigation = root / "app/src/main/res/navigation"
             values = root / "app/src/main/res/values"
             kotlin = root / "app/src/main/java/sample"
-            for folder in (layout, navigation, values, kotlin):
+            for folder in (layout, landscape_layout, navigation, values, kotlin):
                 folder.mkdir(parents=True, exist_ok=True)
             (layout / "activity_main.xml").write_text(
                 f'<FrameLayout xmlns:android="{ANDROID_NS}" android:layout_width="match_parent" android:layout_height="match_parent" />',
@@ -106,6 +108,10 @@ class AndroidXmlSupportTests(unittest.TestCase):
             )
             (layout / "fragment_login.xml").write_text(
                 f'<FrameLayout xmlns:android="{ANDROID_NS}" android:layout_width="match_parent" android:layout_height="match_parent"><TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/welcome" /><include layout="@layout/cell_vehicle" /></FrameLayout>',
+                encoding="utf-8",
+            )
+            (landscape_layout / "fragment_login.xml").write_text(
+                f'<FrameLayout xmlns:android="{ANDROID_NS}" android:layout_width="match_parent" android:layout_height="match_parent"><TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Landscape" /></FrameLayout>',
                 encoding="utf-8",
             )
             (layout / "cell_vehicle.xml").write_text(
@@ -140,11 +146,45 @@ class AndroidXmlSupportTests(unittest.TestCase):
 
             ir = starter_ir(inventory)
             self.assertEqual({screen.get("fragment") for screen in ir["screens"]}, {"@id/loginFragment", "@id/mainActivity"})
+            self.assertEqual([screen["id"] for screen in ir["screens"]].count("fragment-login"), 1)
+
+            def tree_leaves(items, groups=()):
+                leaves = []
+                for item in items:
+                    if item.get("screenId"):
+                        leaves.append((item["screenId"], groups))
+                    else:
+                        leaves.extend(tree_leaves(item.get("children", []), (*groups, item.get("label", ""))))
+                return leaves
+
+            login_leaves = [item for item in tree_leaves(ir["screenTree"]) if item[0] == "fragment-login"]
+            self.assertEqual(len(login_leaves), 1)
+            self.assertIn("main_graph", login_leaves[0][1])
             self.assertTrue(any(edge["kind"] == "navigate" for edge in ir["navigationGraph"]["edges"]))
             self.assertFalse(any(screen.get("source", {}).get("file", "").endswith("nav_graph.xml") for screen in ir["screens"]))
             self.assertTrue(any(node.get("text") == "Welcome" for node in ir["nodes"].values()))
             self.assertTrue(any(node.get("text") == "Vehicle" for node in ir["nodes"].values()))
             self.assertFalse(any(item["reason"] == "unresolved-android-include" for item in ir["fidelity"]["unsupported"]))
+            self.assertEqual(validate_strict_ir(ir), [])
+
+    def test_layout_qualifier_variants_share_one_canonical_screen(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            default_layout = root / "app/src/main/res/layout"
+            landscape_layout = root / "app/src/main/res/layout-land"
+            for folder in (default_layout, landscape_layout):
+                folder.mkdir(parents=True, exist_ok=True)
+            markup = f'<FrameLayout xmlns:android="{ANDROID_NS}" android:layout_width="match_parent" android:layout_height="match_parent" />'
+            (default_layout / "scene_intro.xml").write_text(markup, encoding="utf-8")
+            (landscape_layout / "scene_intro.xml").write_text(markup, encoding="utf-8")
+
+            inventory = scan(root)
+            ir = starter_ir(inventory)
+            screens = [screen for screen in ir["screens"] if screen["id"] == "scene-intro"]
+
+            self.assertEqual(len(screens), 1)
+            self.assertEqual({item["qualifier"] for item in screens[0]["resourceVariants"]}, {"default", "land"})
+            self.assertFalse(any(screen["id"] == "sceneintro-land" for screen in ir["screens"]))
             self.assertEqual(validate_strict_ir(ir), [])
 
 

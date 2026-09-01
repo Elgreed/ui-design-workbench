@@ -1022,6 +1022,26 @@ def evidence_for_screen(screen: dict[str, Any], discovered: list[dict[str, Any]]
     source_file = str(screen.get("source", {}).get("file") or "")
     fragment = str(screen.get("fragment") or "")
     symbol = str(screen.get("source", {}).get("symbol") or screen.get("name") or "")
+    discovered_key = str(screen.get("discoveredKey") or "")
+    navigation_file = str(screen.get("navigationSource", {}).get("file") or "")
+    if discovered_key:
+        matched = next((
+            candidate for candidate in discovered
+            if f'{candidate.get("file", "")}#{candidate.get("name", "")}' == discovered_key
+        ), None)
+        if matched:
+            return matched
+    if fragment:
+        fragment_matches = [
+            candidate for candidate in discovered
+            if str(candidate.get("fragment") or "") == fragment
+        ]
+        if navigation_file:
+            matched = next((candidate for candidate in fragment_matches if str(candidate.get("file") or "") == navigation_file), None)
+            if matched:
+                return matched
+        if len(fragment_matches) == 1:
+            return fragment_matches[0]
     return next((
         candidate for candidate in discovered
         if str(candidate.get("file") or candidate.get("source", {}).get("file") or "") == source_file
@@ -1030,6 +1050,39 @@ def evidence_for_screen(screen: dict[str, Any], discovered: list[dict[str, Any]]
             or str(candidate.get("name") or candidate.get("source", {}).get("symbol") or "") == symbol
         )
     ), {})
+
+
+def consolidate_translated_android_variants(translated_screens: list[dict[str, Any]]) -> None:
+    """Keep one canonical screen per Android layout while retaining qualifier evidence."""
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for screen in translated_screens:
+        if screen.get("platform") != "android" or not screen.get("androidLayout"):
+            continue
+        key = str(screen.get("id") or screen.get("androidLayout"))
+        grouped.setdefault(key, []).append(screen)
+
+    consolidated: list[dict[str, Any]] = []
+    emitted: set[str] = set()
+    for screen in translated_screens:
+        if screen.get("platform") != "android" or not screen.get("androidLayout"):
+            consolidated.append(screen)
+            continue
+        key = str(screen.get("id") or screen.get("androidLayout"))
+        if key in emitted:
+            continue
+        emitted.add(key)
+        variants = grouped[key]
+        canonical = next((item for item in variants if not item.get("resourceQualifier")), variants[-1])
+        if len(variants) > 1:
+            canonical["resourceVariants"] = [
+                {
+                    "qualifier": str(item.get("resourceQualifier") or "default"),
+                    "source": dict(item.get("source", {})),
+                }
+                for item in variants
+            ]
+        consolidated.append(canonical)
+    translated_screens[:] = consolidated
 
 
 def reconcile_translated_android_screens(
@@ -1313,6 +1366,7 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
         for context in adapter_contexts
     ]
     translated = translate_sources(adapter_contexts)
+    consolidate_translated_android_variants(translated.screens)
     resolve_translated_android_includes(translated)
     token_resolver = TokenResolver(translated.tokens)
     for node in translated.nodes.values():
@@ -1325,6 +1379,16 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
     raw_scan_screens = scan_result.get("screens", [])
     reconcile_translated_android_screens(translated.screens, raw_scan_screens)
     reconcile_translated_screens(translated.screens, raw_scan_screens)
+    for screen in translated.screens:
+        variant_keys = []
+        for variant in screen.get("resourceVariants", []):
+            variant_file = str(variant.get("source", {}).get("file") or "")
+            candidate = next((item for item in raw_scan_screens if str(item.get("file") or "") == variant_file), None)
+            if candidate:
+                variant_keys.append(f'{candidate.get("file", "")}#{candidate.get("name", "")}')
+        keys = [str(screen.get("discoveredKey") or ""), *variant_keys]
+        if any(keys):
+            screen["discoveredKeys"] = list(dict.fromkeys(key for key in keys if key))
     if scan_result.get("primaryPlatforms") == ["flutter"]:
         discovered_flutter = {str(item.get("name") or "") for item in raw_scan_screens}
         translated.screens[:] = [
@@ -1447,9 +1511,15 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
             for item in screens
         }
         represented_discovered = {str(item.get("discoveredKey") or "") for item in screens if item.get("discoveredKey")}
+        represented_variant_files = {
+            str(variant.get("source", {}).get("file") or "")
+            for item in screens
+            for variant in item.get("resourceVariants", [])
+            if isinstance(variant, dict)
+        }
         for inventory in inventory_screens:
             key = (str(inventory.get("source", {}).get("file") or ""), str(inventory.get("fragment") or ""))
-            if key in represented or str(inventory.get("discoveredKey") or "") in represented_discovered:
+            if key[0] in represented_variant_files or key in represented or str(inventory.get("discoveredKey") or "") in represented_discovered:
                 continue
             screens.append(inventory)
             stack = [str(inventory.get("root") or "")]

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from android_resource_resolver import AndroidResourceCatalog, android_layout_role, material_icon_asset
 from fidelity_adapters import SourceContext, translate_sources
+from fidelity_core import validate_strict_ir
 from render_preview import render_html, resolve_assets
 from scan_ui import scan, starter_ir
 
@@ -80,6 +81,9 @@ class AndroidResourceResolverTests(unittest.TestCase):
         self.assertEqual(image_button["layout"]["justifySelf"], "center")
         self.assertEqual(image_button["layout"]["alignSelf"], "center")
         self.assertEqual(image_button["semantics"]["label"], "Add project")
+        for node in nodes:
+            for key in node.get("style", {}):
+                self.assertIn(f"style.{key}", node.get("provenance", {}), (node.get("component"), key))
         compose_column = next(node for node in nodes if node.get("component") == "Column" and node.get("source", {}).get("symbol") == "ResourceScreen")
         self.assertEqual(compose_column["layout"]["paddingHorizontal"], expected["composeHorizontalPadding"])
         self.assertEqual(compose_column["layout"]["paddingVertical"], expected["composeVerticalPadding"])
@@ -93,6 +97,9 @@ class AndroidResourceResolverTests(unittest.TestCase):
         self.assertEqual(compose_text["text"], expected["screenText"])
         self.assertEqual(compose_text["style"]["fontSize"], "20px")
         self.assertEqual(compose_text["style"]["color"], expected["primary"])
+
+        ir = starter_ir(scan(FIXTURE))
+        self.assertEqual(validate_strict_ir(ir), [])
 
     def test_projection_embeds_resolved_icons_and_overlay_alignment(self) -> None:
         translated = translate_sources(contexts())

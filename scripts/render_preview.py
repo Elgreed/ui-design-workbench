@@ -676,11 +676,15 @@ def fidelity_audit(ir: dict[str, Any]) -> dict[str, Any]:
     excluded_routes, invalid_route_exclusions = exclusion_keys(fidelity.get("excludedRoutes", []), "route")
     discovered_screens = ir.get("discoveredScreens", [])
     discovered_routes = ir.get("discoveredRoutes", [])
-    translated_screen_keys = {
-        str(screen.get("discoveredKey") or f'{screen.get("source", {}).get("file", "")}#{screen.get("source", {}).get("symbol", screen.get("name", ""))}')
-        for screen in screens
-        if screen.get("translationStatus") != "inventory"
-    }
+    translated_screen_keys: set[str] = set()
+    for screen in screens:
+        if screen.get("translationStatus") == "inventory":
+            continue
+        translated_screen_keys.add(str(
+            screen.get("discoveredKey")
+            or f'{screen.get("source", {}).get("file", "")}#{screen.get("source", {}).get("symbol", screen.get("name", ""))}'
+        ))
+        translated_screen_keys.update(str(key) for key in screen.get("discoveredKeys", []) if key)
     expected_screen_keys = {f'{screen.get("file", "")}#{screen.get("name", "")}' for screen in discovered_screens}
     missing_screen_keys = sorted(expected_screen_keys - translated_screen_keys - excluded_screens)
     translated_routes = {

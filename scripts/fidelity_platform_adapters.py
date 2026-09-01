@@ -272,7 +272,15 @@ class AndroidXmlAdapter:
             for attr, (path, group) in mapping.items():
                 if attr in attrs:
                     resolved = catalog.resolve(attrs[attr], group, normalized_style)
-                    value = resolved.value if resolved.resolved else _normalize_ref(attrs[attr], "colors" if group == "color" else group)
+                    value = _normalize_ref(str(resolved.value), "colors" if group == "color" else group) if resolved.resolved else attrs[attr]
+                    if not resolved.resolved and str(attrs[attr]).startswith(("@", "?")):
+                        result.unsupported.append({
+                            "adapter": self.id,
+                            "file": active_context.source,
+                            "line": line,
+                            "expression": f'{attr}="{attrs[attr]}"',
+                            "reason": "unresolved-android-resource",
+                        })
                     source = resolved.source or (style_entry.source if attr not in explicit_attrs and style_entry else active_context.source)
                     source_line = resolved.line if resolved.source else style_entry.line if attr not in explicit_attrs and style_entry else line
                     group_name, key = path.split(".", 1)
@@ -319,7 +327,9 @@ class AndroidXmlAdapter:
                 result.unsupported.append({"adapter": self.id, "file": active_context.source, "line": line, "expression": ", ".join(sorted(unsupported_constraints)), "reason": "unsupported-constraint-equation"})
             if attrs.get("text"):
                 resolved = catalog.resolve(attrs["text"], "string", normalized_style)
-                node["text"] = resolved.value if resolved.resolved else _normalize_ref(attrs["text"], "strings")
+                node["text"] = resolved.value if resolved.resolved else attrs["text"]
+                if not resolved.resolved and str(attrs["text"]).startswith(("@", "?")):
+                    result.unsupported.append({"adapter": self.id, "file": active_context.source, "line": line, "expression": f'text="{attrs["text"]}"', "reason": "unresolved-android-resource"})
                 node["provenance"]["text"] = property_evidence(resolved.source or active_context.source, resolved.line if resolved.source else line, f'text="{attrs["text"]}"', self.id, resolved.confidence if resolved.source else "exact")
             if attrs.get("hint"):
                 resolved = catalog.resolve(attrs["hint"], "string", normalized_style)
@@ -347,6 +357,14 @@ class AndroidXmlAdapter:
                 node["asset"] = drawable.asset or asset
                 node["style"].update(drawable.style)
                 node["provenance"]["asset"] = property_evidence(drawable.source or active_context.source, drawable.line if drawable.source else line, str(asset), self.id, drawable.confidence)
+                for key in drawable.style:
+                    node["provenance"][f"style.{key}"] = property_evidence(
+                        drawable.source or active_context.source,
+                        drawable.line if drawable.source else line,
+                        str(asset),
+                        self.id,
+                        drawable.confidence,
+                    )
                 if not drawable.asset:
                     result.unsupported.append({"adapter": self.id, "file": active_context.source, "line": line, "expression": asset, "reason": "unsupported-android-drawable"})
             scale_types = {"centerCrop": "cover", "fitCenter": "contain", "centerInside": "contain", "fitXY": "fill", "center": "none"}
@@ -361,7 +379,13 @@ class AndroidXmlAdapter:
                     "type": "icon", "component": "ImageButton.drawable", "asset": node["asset"], "alt": node.get("alt", ""),
                     "layout": {"width": "fill", "height": "fill"}, "style": {"objectFit": node.get("style", {}).get("objectFit", "contain")}, "children": [],
                     "source": {"file": active_context.source, "line": line}, "confidence": node.get("confidence", "high"), "standardRef": node.get("standardRef"),
-                    "provenance": {"asset": node["provenance"].get("asset", property_evidence(active_context.source, line, str(node["asset"]), self.id, "exact"))},
+                    "provenance": {
+                        "component": property_evidence(active_context.source, line, "ImageButton drawable", self.id, "high"),
+                        "asset": node["provenance"].get("asset", property_evidence(active_context.source, line, str(node["asset"]), self.id, "exact")),
+                        "layout.width": property_evidence(active_context.source, line, "ImageButton drawable bounds", self.id, "high"),
+                        "layout.height": property_evidence(active_context.source, line, "ImageButton drawable bounds", self.id, "high"),
+                        "style.objectFit": node["provenance"].get("style.objectFit", property_evidence(active_context.source, line, "ImageButton drawable scale", self.id, "high")),
+                    },
                 }
                 node["children"].insert(0, icon_id)
             if node.get("layout", {}).get("direction") == "overlay":

@@ -141,6 +141,10 @@ class IncrementalCacheTests(unittest.TestCase):
             "background": "$colors.missing",
             "color": "$colors.surface",
         }
+        design_model["nodes"][root_id]["provenance"] = {
+            "style.background": {"id": "removed"},
+            "style.color": {"id": "preserved"},
+        }
 
         merged = uidw.merge_authored_state(generated, design_model, uidw.extract_review_state(generated), [])
 
@@ -148,6 +152,8 @@ class IncrementalCacheTests(unittest.TestCase):
         self.assertEqual(merged["nodes"][root_id]["style"]["color"], "$colors.surface")
         self.assertIn("surface", merged["tokens"]["colors"])
         self.assertNotIn("$colors.missing", json.dumps(merged))
+        self.assertNotIn("style.background", merged["nodes"][root_id]["provenance"])
+        self.assertIn("style.color", merged["nodes"][root_id]["provenance"])
 
     def test_config_setup_is_persistent_agent_readable_and_does_not_rescan(self) -> None:
         uidw.initialize(self.repo)

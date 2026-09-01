@@ -6,6 +6,13 @@ Not every historical version was published as a GitHub Release or package artifa
 
 ## [Unreleased]
 
+## [0.6.7] - 2026-09-02
+
+### Fixed
+
+- Android layout qualifier variants no longer create duplicate screen-tree entries, and translated layouts retain their Android Navigation group hierarchy.
+- Unresolved Android resources remain explicit source references instead of invalid UIDW token links; drawable-derived styles and cache-migrated provenance now satisfy the strict evidence contract.
+
 ## [0.6.6] - 2026-08-31
 
 ### Fixed
