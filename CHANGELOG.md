@@ -6,6 +6,13 @@ Not every historical version was published as a GitHub Release or package artifa
 
 ## [Unreleased]
 
+## [0.6.9] - 2026-09-05
+
+### Fixed
+
+- Headless Chromium startup retries reading temporarily locked DevTools port files and waits for complete, valid port data instead of failing between a successful file check and the subsequent read.
+- Includes the platform fidelity improvements prepared for v0.6.8, whose release pipeline stopped before PyPI and GitHub Release publication.
+
 ## [0.6.8] - 2026-09-05
 
 ### Fixed

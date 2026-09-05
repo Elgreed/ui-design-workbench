@@ -66,11 +66,12 @@ function findChrome() {
 
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
-async function waitForFile(file, timeoutMs) {
+async function waitForDevToolsPort(file, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      if (fs.statSync(file).size > 0) return;
+      const [port, endpoint] = fs.readFileSync(file, 'utf8').trim().split(/\r?\n/);
+      if (/^\d+$/.test(port) && Number(port) > 0 && Number(port) <= 65535 && endpoint?.startsWith('/devtools/browser/')) return port;
     } catch (error) {
       if (!['ENOENT', 'EBUSY', 'EACCES', 'EPERM'].includes(error.code)) throw error;
     }
@@ -125,8 +126,7 @@ async function main() {
   let socket;
   let cdp;
   try {
-    await waitForFile(activePort, Math.min(args.timeoutMs, 30000));
-    const [port] = fs.readFileSync(activePort, 'utf8').trim().split(/\r?\n/);
+    const port = await waitForDevToolsPort(activePort, Math.min(args.timeoutMs, 30000));
     let targets = [];
     const targetDeadline = Date.now() + 15000;
     while (Date.now() < targetDeadline) {
@@ -998,7 +998,11 @@ async function main() {
   }
 }
 
-main().catch(error => {
-  console.error(error.message);
-  process.exitCode = 2;
-});
+module.exports = { waitForDevToolsPort };
+
+if (require.main === module) {
+  main().catch(error => {
+    console.error(error.message);
+    process.exitCode = 2;
+  });
+}
