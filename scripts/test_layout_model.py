@@ -57,8 +57,9 @@ class LayoutModelTests(unittest.TestCase):
 
         result = LayoutSolver(nodes, {}).solve("root", 100, 100)
 
-        self.assertEqual(result["status"], "solved")
-        self.assertEqual(result["nodes"]["label"], {"x": 10.0, "y": 10.0, "width": 80.0, "height": 24.0})
+        self.assertEqual(result["status"], "partial")
+        self.assertEqual(result["textMeasurement"], "browser")
+        self.assertIn("browser-text-metrics:label", result["diagnostics"])
 
     def test_overlay_honors_authored_parent_edge_constraints(self) -> None:
         nodes = {
@@ -122,7 +123,7 @@ class LayoutModelTests(unittest.TestCase):
         preview = render_html(ir)
 
         self.assertNotIn("projectionGeometry", ir)
-        self.assertIn('"projectionGeometry":{"version":1,"model":"deterministic-box-v1"', preview)
+        self.assertIn('"projectionGeometry":{"version":1,"model":"deterministic-box-v2"', preview)
         self.assertIn("data-layout-model=", preview)
         self.assertIn("geometryContext?.nodes?.[id]", preview)
 

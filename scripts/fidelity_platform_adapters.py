@@ -15,6 +15,7 @@ from apple_resource_resolver import AppleResourceCatalog, sf_symbol_asset
 from fidelity_adapter_api import AdapterResult, SourceContext
 from fidelity_core import property_evidence
 from platform_component_catalog import adapter_type_map
+from source_syntax import arguments, closing as syntax_close, mask_literals, named_argument, modifier_calls, substitute_identifiers
 
 
 def _slug(value: str, fallback: str = "node") -> str:
@@ -36,26 +37,7 @@ def _line(text: str, expression: str, start: int = 0) -> int:
 
 
 def _balanced_close(text: str, start: int, opening: str, closing: str) -> int | None:
-    depth, quote, escaped = 0, None, False
-    for index in range(start, len(text)):
-        char = text[index]
-        if quote:
-            if escaped:
-                escaped = False
-            elif char == "\\":
-                escaped = True
-            elif char == quote:
-                quote = None
-            continue
-        if char in {'"', "'"}:
-            quote = char
-        elif char == opening:
-            depth += 1
-        elif char == closing:
-            depth -= 1
-            if depth == 0:
-                return index
-    return None
+    return syntax_close(text, start)
 
 
 def _normalize_ref(value: str, preferred_group: str = "spacing") -> Any:
@@ -437,6 +419,12 @@ class XamlAdapter:
     def supports(self, context: SourceContext) -> bool:
         return context.path.suffix.lower() == ".xaml" and any(value.startswith("windows-") for value in context.platforms)
 
+    @staticmethod
+    def _color(value: str) -> str:
+        if re.fullmatch(r"#[0-9a-fA-F]{8}", value):
+            return ("#" + value[3:] + (value[1:3] if value[1:3].lower() != "ff" else "")).lower()
+        return value
+
     def translate(self, context: SourceContext) -> AdapterResult:
         result = AdapterResult(adapter=self.id)
         try:
@@ -452,7 +440,7 @@ class XamlAdapter:
                 if not name or not value:
                     continue
                 group = "colors" if _local(child.tag) in {"Color", "SolidColorBrush"} else "spacing"
-                result.tokens[group][_slug(name).replace("-", "_")] = {"value": _normalize_ref(value, group), "source": {"file": context.source, "line": _line(context.text, name)}, "adapter": self.id}
+                result.tokens[group][_slug(name).replace("-", "_")] = {"value": _normalize_ref(self._color(value) if group == "colors" else value, group), "source": {"file": context.source, "line": _line(context.text, name)}, "adapter": self.id}
             return result
         root_attrs = _attrs(root)
         name = root_attrs.get("Class", context.path.stem).split(".")[-1]
@@ -472,10 +460,57 @@ class XamlAdapter:
                 node["provenance"]["component"] = property_evidence(context.source, line, tag, self.id, "exact")
             else:
                 result.unsupported.append({"adapter": self.id, "file": context.source, "line": line, "expression": tag, "reason": "unsupported-xaml-control"})
-            mapping = {"Width": ("layout.width", "spacing"), "Height": ("layout.height", "spacing"), "MinWidth": ("layout.minWidth", "spacing"), "MinHeight": ("layout.minHeight", "spacing"), "Margin": ("layout.margin", "spacing"), "Padding": ("layout.padding", "spacing"), "Background": ("style.background", "colors"), "Foreground": ("style.color", "colors"), "FontSize": ("style.fontSize", "typography"), "CornerRadius": ("style.radius", "radii"), "Opacity": ("style.opacity", "spacing")}
+            mapping = {"Width": ("layout.width", "spacing"), "Height": ("layout.height", "spacing"), "MinWidth": ("layout.minWidth", "spacing"), "MinHeight": ("layout.minHeight", "spacing"), "MaxWidth": ("layout.maxWidth", "spacing"), "MaxHeight": ("layout.maxHeight", "spacing"), "Background": ("style.background", "colors"), "Foreground": ("style.color", "colors"), "FontFamily": ("style.fontFamily", "typography"), "FontSize": ("style.fontSize", "typography"), "LineHeight": ("style.lineHeight", "typography"), "CornerRadius": ("style.radius", "radii"), "Opacity": ("style.opacity", "spacing")}
             for attr, (path, group) in mapping.items():
                 if attr in attrs:
-                    _set(node, path, _normalize_ref(attrs[attr], group), context, line, f'{attr}="{attrs[attr]}"', self.id)
+                    value = self._color(attrs[attr]) if group == "colors" else attrs[attr]
+                    _set(node, path, _normalize_ref(value, group), context, line, f'{attr}="{attrs[attr]}"', self.id)
+            for attr in ("Margin", "Padding", "BorderThickness"):
+                if attr not in attrs:
+                    continue
+                values = re.split(r"\s*,\s*|\s+", attrs[attr].strip())
+                if len(values) in {1, 2, 4} and all(re.fullmatch(r"-?\d+(?:\.\d+)?", value) for value in values):
+                    edges = values * 4 if len(values) == 1 else values * 2 if len(values) == 2 else values
+                    for side, value in zip(("Left", "Top", "Right", "Bottom"), edges):
+                        target = f"style.border{side}Width" if attr == "BorderThickness" else f"layout.{attr.lower()}{side}"
+                        _set(node, target, _normalize_ref(value), context, line, f'{attr}="{attrs[attr]}"', self.id)
+                else:
+                    result.unsupported.append({"adapter": self.id, "file": context.source, "line": line, "expression": f'{attr}="{attrs[attr]}"', "reason": "unresolved-xaml-thickness"})
+            if "BorderBrush" in attrs:
+                _set(node, "style.borderColor", self._color(attrs["BorderBrush"]), context, line, attrs["BorderBrush"], self.id)
+                _set(node, "style.borderStyle", "solid", context, line, attrs["BorderBrush"], self.id)
+            if tag in {"Page", "Window", "UserControl", "Grid"}:
+                for axis in ("width", "height"):
+                    if axis not in node["layout"]:
+                        _set(node, "layout." + axis, "fill", context, line, tag + " stretch", self.id, "high")
+            if tag == "Grid":
+                _set(node, "layout.direction", "grid", context, line, tag, self.id)
+                for axis, collection, child_tag, attr in (("columns", "Grid.ColumnDefinitions", "ColumnDefinition", "Width"), ("rows", "Grid.RowDefinitions", "RowDefinition", "Height")):
+                    definitions = [item for collection_node in element if _local(collection_node.tag) == collection for item in collection_node if _local(item.tag) == child_tag]
+                    tracks = []
+                    for definition in definitions:
+                        value = _attrs(definition).get(attr, "*")
+                        track = "auto" if value == "Auto" else (value[:-1] or "1") + "fr" if re.fullmatch(r"\d*(?:\.\d+)?\*", value) else value + "px" if re.fullmatch(r"\d+(?:\.\d+)?", value) else None
+                        if track:
+                            tracks.append(track)
+                        else:
+                            result.unsupported.append({"adapter": self.id, "file": context.source, "line": line, "expression": value, "reason": "unresolved-xaml-grid-track"})
+                    if len(tracks) == len(definitions):
+                        _set(node, "layout." + axis, " ".join(tracks) or "1fr", context, line, collection, self.id, "high")
+            if tag == "StackPanel" and "Orientation" not in attrs:
+                _set(node, "layout.direction", "column", context, line, "StackPanel default orientation", self.id, "high")
+            if tag == "TextBlock":
+                _set(node, "style.whiteSpace", "pre-wrap" if attrs.get("TextWrapping") in {"Wrap", "WrapWholeWords", "WrapWithOverflow"} else "pre", context, line, "TextWrapping=" + attrs.get("TextWrapping", "NoWrap"), self.id, "high")
+            for attr, key in (("HorizontalAlignment", "justifySelf"), ("VerticalAlignment", "alignSelf")):
+                value = {"Left": "start", "Top": "start", "Center": "center", "Right": "end", "Bottom": "end", "Stretch": "stretch"}.get(attrs.get(attr, ""))
+                if value:
+                    _set(node, "layout." + key, value, context, line, f'{attr}="{attrs[attr]}"', self.id)
+            for attr, key in (("IsEnabled", "disabled"), ("IsChecked", "checked")):
+                if attrs.get(attr, "").lower() in {"true", "false"}:
+                    node[key] = attrs[attr].lower() == ("false" if key == "disabled" else "true")
+                    node["provenance"][key] = property_evidence(context.source, line, f'{attr}="{attrs[attr]}"', self.id, "exact")
+            if attrs.get("Visibility") in {"Collapsed", "Hidden"}:
+                _set(node, "layout.display" if attrs["Visibility"] == "Collapsed" else "style.visibility", "none" if attrs["Visibility"] == "Collapsed" else "hidden", context, line, attrs["Visibility"], self.id)
             if attrs.get("Orientation") in {"Vertical", "Horizontal"}:
                 _set(node, "layout.direction", "column" if attrs["Orientation"] == "Vertical" else "row", context, line, f'Orientation="{attrs["Orientation"]}"', self.id)
             text = attrs.get("Text") or attrs.get("Content") or (element.text or "").strip()
@@ -486,6 +521,19 @@ class XamlAdapter:
                 node["asset"] = attrs["Source"]
                 node["provenance"]["asset"] = property_evidence(context.source, line, attrs["Source"], self.id, "exact")
             node["children"] = [convert(child) for child in element if isinstance(child.tag, str) and "." not in _local(child.tag)]
+            if tag in {"Border", "Page", "Window", "UserControl"} and len(node["children"]) == 1:
+                child = result.nodes[node["children"][0]]
+                for axis, alignment in (("width", "justifySelf"), ("height", "alignSelf")):
+                    if axis not in child["layout"] and child["layout"].get(alignment, "stretch") == "stretch":
+                        _set(child, "layout." + axis, "fill", context, line, tag + " child stretch", self.id, "high")
+            if tag == "Grid":
+                visual_children = [child for child in element if isinstance(child.tag, str) and "." not in _local(child.tag)]
+                for child, child_id in zip(visual_children, node["children"]):
+                    child_attrs = _attrs(child)
+                    raw = [child_attrs.get(key, default) for key, default in (("Grid.Row", "0"), ("Grid.Column", "0"), ("Grid.RowSpan", "1"), ("Grid.ColumnSpan", "1"))]
+                    if all(value.isdigit() for value in raw):
+                        row, column, row_span, column_span = map(int, raw)
+                        _set(result.nodes[child_id], "layout.gridArea", f"{row+1} / {column+1} / span {row_span} / span {column_span}", context, line, "Grid cell placement", self.id, "high")
             result.nodes[node_id] = node
             return node_id
 
@@ -521,9 +569,17 @@ DECLARATIVE_TYPES = {
 def _declarative_calls(body: str, types: set[str]) -> list[dict[str, Any]]:
     calls: list[dict[str, Any]] = []
     pattern = re.compile(r"\b(" + "|".join(re.escape(name) for name in sorted(types, key=len, reverse=True)) + r")\b")
-    for match in pattern.finditer(body):
+    masked = mask_literals(body)
+    for match in pattern.finditer(masked):
         cursor = match.end()
-        while cursor < len(body) and body[cursor].isspace(): cursor += 1
+        constructor = None
+        suffix = re.match(r"\.(\w+)\s*(?=\()", masked[cursor:])
+        if suffix:
+            constructor = suffix.group(1)
+            cursor += suffix.end()
+        while cursor < len(body) and masked[cursor].isspace(): cursor += 1
+        if cursor >= len(body) or masked[cursor] not in "({":
+            continue
         args, close = "", match.end()
         if cursor < len(body) and body[cursor] == "(":
             end = _balanced_close(body, cursor, "(", ")")
@@ -532,7 +588,7 @@ def _declarative_calls(body: str, types: set[str]) -> list[dict[str, Any]]:
         while cursor < len(body) and body[cursor].isspace(): cursor += 1
         block_end = _balanced_close(body, cursor, "{", "}") if cursor < len(body) and body[cursor] == "{" else None
         contain_end = block_end if block_end is not None else close
-        calls.append({"widget": match.group(1), "start": match.start(), "args": args, "close": close, "blockStart": cursor if block_end is not None else None, "containEnd": contain_end})
+        calls.append({"widget": match.group(1), "constructor": constructor, "start": match.start(), "args": args, "close": close, "blockStart": cursor if block_end is not None else None, "containEnd": contain_end})
     return calls
 
 
@@ -573,6 +629,85 @@ def _apple_color(expression: str, catalog: AppleResourceCatalog | None) -> tuple
     return (colors.get(named.group(1)), "apple-semantic-color") if named else (None, "")
 
 
+def _swift_padding(args: str) -> dict[str, Any]:
+    parts = arguments(args)
+    if len(parts) == 1 and re.fullmatch(r"-?\d+(?:\.\d+)?", parts[0]):
+        return {"padding": _normalize_ref(parts[0])}
+    if len(parts) == 2:
+        sides = {"horizontal": "Horizontal", "vertical": "Vertical", "leading": "Left", "trailing": "Right", "top": "Top", "bottom": "Bottom"}
+        return {"padding" + sides[side]: _normalize_ref(parts[1]) for side in re.findall(r"\.(\w+)", parts[0]) if side in sides}
+    return {}
+
+
+def _swift_wrappers(result, node_id, node, modifiers, context, line, catalog):
+    steps = modifier_calls(modifiers)
+    names = [name for name, _ in steps]
+    ordered = (("padding" in names and "frame" in names) or names.count("frame") > 1 or
+               any(name == "background" and any(later in {"padding", "frame"} for later in names[index+1:]) for index, name in enumerate(names)))
+    # Repeated directional padding composes; it does not discard earlier edges.
+    if not ordered:
+        accumulated = {}
+        for name, args in steps:
+            if name == "padding":
+                for key, value in _swift_padding(args).items():
+                    old = accumulated.get(key, 0)
+                    accumulated[key] = old + value if isinstance(old, (int, float)) and isinstance(value, (int, float)) else value
+        overlap = ("padding" in accumulated and len(accumulated) > 1 or
+                   "paddingHorizontal" in accumulated and any("padding"+side in accumulated for side in ("Left", "Right")) or
+                   "paddingVertical" in accumulated and any("padding"+side in accumulated for side in ("Top", "Bottom")))
+        if overlap and all(isinstance(value, (int, float)) for value in accumulated.values()):
+            accumulated = {"padding"+side: accumulated.get("padding", 0)+accumulated.get("padding"+axis, 0)+accumulated.get("padding"+side, 0)
+                           for side, axis in (("Left", "Horizontal"), ("Right", "Horizontal"), ("Top", "Vertical"), ("Bottom", "Vertical"))}
+            for key in list(node["layout"]):
+                if key.startswith("padding"):
+                    node["layout"].pop(key)
+                    node["provenance"].pop("layout."+key, None)
+        for key, value in accumulated.items():
+            _set(node, f"layout.{key}", value, context, line, modifiers, "swiftui", "high")
+        return node_id
+    for key in list(node["layout"]):
+        if key.startswith("padding") or key in {"width", "height"}:
+            node["layout"].pop(key)
+            node["provenance"].pop("layout." + key, None)
+    for key in ("backgroundColor", "radius"):
+        node["style"].pop(key, None)
+        node["provenance"].pop("style." + key, None)
+    current_id, current = node_id, node
+    for index, (name, args) in enumerate(steps):
+        if name in {"padding", "frame"}:
+            layout = _swift_padding(args) if name == "padding" else {}
+            if name == "frame":
+                for key in ("width", "height", "minWidth", "maxWidth", "minHeight", "maxHeight"):
+                    value = named_argument(args, key, ":")
+                    if value:
+                        if value == ".infinity" and key.startswith("max"):
+                            layout[key[3:].lower()] = "fill"
+                        else:
+                            layout[key] = _normalize_ref(value)
+                layout.update({"align": "center", "justify": "center"})
+                alignment = named_argument(args, "alignment", ":") or ".center"
+                if "leading" in alignment.lower(): layout["align"] = "start"
+                if "trailing" in alignment.lower(): layout["align"] = "end"
+                if "top" in alignment.lower(): layout["justify"] = "start"
+                if "bottom" in alignment.lower(): layout["justify"] = "end"
+            wrapper_id = f"{node_id}-modifier-{index}"
+            wrapper = {"type": "container", "component": "SwiftUI." + name, "standardRef": "project.swiftui.modifier",
+                       "layout": {}, "style": {}, "children": [current_id], "source": node["source"].copy(),
+                       "confidence": "high", "provenance": {}}
+            wrapper["provenance"]["component"] = property_evidence(context.source, line, f".{name}({args})", "swiftui", "high")
+            for key, value in layout.items():
+                _set(wrapper, f"layout.{key}", value, context, line, f".{name}({args})", "swiftui", "high")
+            result.nodes[wrapper_id] = wrapper
+            current_id, current = wrapper_id, wrapper
+        elif name == "background":
+            color, _ = _apple_color(args, catalog)
+            if color:
+                _set(current, "style.backgroundColor", color, context, line, f".background({args})", "swiftui", "high")
+        elif name == "cornerRadius":
+            _set(current, "style.radius", _normalize_ref(args), context, line, f".cornerRadius({args})", "swiftui", "high")
+    return current_id
+
+
 def _translate_declarative(
     context: SourceContext,
     adapter: str,
@@ -585,8 +720,12 @@ def _translate_declarative(
     apple_catalog: AppleResourceCatalog | None = None,
     extra_types: dict[str, str] | None = None,
     emit_screen: bool = True,
+    node_budget: list[int] | None = None,
 ) -> AdapterResult:
     result = AdapterResult(adapter=adapter, tokens=tokens)
+    if re.search(r"#if\b|\b(?:if|switch|ForEach)\s*(?:\(|\b)", mask_literals(body)):
+        result.unsupported.append({"adapter": adapter, "file": context.source, "line": context.text.count("\n", 0, body_offset)+1,
+                                   "expression": screen_name, "reason": "unevaluated-declarative-control-flow"})
     screen_id, root_id = _slug(screen_name), f"{_slug(screen_name)}-root"
     result.nodes[root_id] = _root_node(context, adapter, f"project.{standard_prefix}.screen", _line(context.text, screen_name))
     types = {**DECLARATIVE_TYPES, **adapter_type_map(platform, adapter), **(extra_types or {})}
@@ -601,20 +740,38 @@ def _translate_declarative(
         )
     ]
     records: list[tuple[dict[str, Any], str]] = []
+    render_roots = {}
+    budget = node_budget if node_budget is not None else [2000]
     for index, call in enumerate(calls, start=1):
-        widget, args = call["widget"], call["args"]
+        if budget[0] <= 0:
+            result.unsupported.append({"adapter": adapter, "file": context.source, "expression": screen_name, "reason": "declarative-expansion-budget-exceeded"})
+            break
+        budget[0] -= 1
+        widget, raw_args = call["widget"], call["args"]
+        # A parent's visual properties never come from its child widgets or handlers.
+        scoped = []
+        for argument in arguments(raw_args):
+            key = re.match(r"(\w+)\s*:", argument)
+            if key and (key.group(1).startswith("on") or key.group(1) in {"action", "builder", "itemBuilder"}):
+                continue
+            if _declarative_calls(argument, set(types)):
+                continue
+            scoped.append(argument)
+        args = ", ".join(scoped)
         node_id, node_type = f"{screen_id}-{_slug(widget)}-{index}", types[widget]
+        if widget == "SizedBox" and named_argument(raw_args, "child", ":"):
+            node_type = "container"
         if platform == "flutter" and widget in {"Checkbox", "Switch", "CupertinoSwitch", "Radio"}:
             node_type = "container"
-        line = context.text.count("\n", 0, body_offset + call["start"]) + 1
+        line = context.text.count("\n", 0, body_offset) + body.count("\n", 0, call["start"]) + 1
         native_prefix = "apple" if platform == "ios" else "macos" if platform == "macos" else "material3" if platform == "android" else "flutter" if platform == "flutter" else "project"
         node: dict[str, Any] = {"type": node_type, "component": widget, "layout": {}, "style": {}, "children": [], "source": {"file": context.source, "line": line, "symbol": screen_name}, "confidence": "high", "standardRef": f"{native_prefix}.{standard_prefix}.{widget.lower()}", "inheritsAppearance": True, "provenance": {"component": property_evidence(context.source, line, widget, adapter, "exact")}}
         if widget in custom_names:
-            node["_adapterArgs"] = args
+            node["_adapterArgs"] = raw_args
         else:
             node["appearanceSource"] = f"{platform}-framework-default"
         if platform == "flutter" and widget in {"Checkbox", "Switch", "CupertinoSwitch", "Radio"}:
-            callback = re.search(r"\bonChanged\s*:\s*([^,\n]+)", args)
+            callback = re.search(r"\bonChanged\s*:\s*([^,\n]+)", raw_args)
             if callback and callback.group(1).strip() != "null":
                 role = "switch" if "Switch" in widget else "radio" if widget == "Radio" else "checkbox"
                 node["semantics"] = {"role": role}
@@ -658,7 +815,8 @@ def _translate_declarative(
         if spacing:
             _set(node, "layout.gap", _normalize_ref(spacing.group(1)), context, line, spacing.group(0), adapter)
         modifier_start = int(call.get("containEnd") or call["close"]) + 1
-        expression = args + _modifier_chain(body, modifier_start)
+        modifiers = _modifier_chain(body, modifier_start)
+        expression = args + modifiers
         padding = re.search(r"\.padding\s*\(\s*(?!\.)([\w.]+)", expression)
         flutter_padding = re.search(r"padding\s*:\s*(?:const\s+)?EdgeInsets\.all\s*\(\s*([\w.]+)", expression)
         padding_value = padding.group(1) if padding else flutter_padding.group(1) if flutter_padding else None
@@ -667,8 +825,10 @@ def _translate_declarative(
         if directional_padding:
             key = {"horizontal": "paddingHorizontal", "vertical": "paddingVertical", "top": "paddingTop", "bottom": "paddingBottom", "leading": "paddingLeft", "trailing": "paddingRight"}[directional_padding.group(1)]
             _set(node, f"layout.{key}", _normalize_ref(directional_padding.group(2)), context, line, directional_padding.group(0), adapter)
-        width = re.search(r"(?:width\s*:\s*|\.frame\s*\(\s*width\s*:\s*)([\w.]+)", expression)
-        height = re.search(r"(?:height\s*:\s*|\.frame\s*\([^)]*height\s*:\s*)([\w.]+)", expression)
+        dimensions = modifiers if platform in {"ios", "macos"} else ", ".join(
+            f"{key}: {value}" for key in ("width", "height") if (value := named_argument(args, key, ":")) is not None)
+        width = re.search(r"(?:width\s*:\s*|\.frame\s*\(\s*width\s*:\s*)([\w.]+)", dimensions)
+        height = re.search(r"(?:height\s*:\s*|\.frame\s*\([^)]*height\s*:\s*)([\w.]+)", dimensions)
         if width: _set(node, "layout.width", _normalize_ref(width.group(1)), context, line, width.group(0), adapter)
         if height: _set(node, "layout.height", _normalize_ref(height.group(1)), context, line, height.group(0), adapter)
         if re.search(r"\.frame\s*\([^)]*maxWidth\s*:\s*\.infinity", expression):
@@ -684,6 +844,8 @@ def _translate_declarative(
                 if asset := sf_symbol_asset(system_image.group(1)):
                     node["asset"] = asset
                     node["provenance"]["asset"] = property_evidence("apple-sf-symbol-fallback", 1, system_image.group(0), adapter, "approximate")
+                else:
+                    result.unsupported.append({"adapter": adapter, "file": context.source, "line": line, "expression": system_image.group(0), "reason": "unsupported-sf-symbol"})
             elif widget in {"Image", "AsyncImage"} and named_image and apple_catalog:
                 resolved = apple_catalog.image(named_image.group(1))
                 if resolved:
@@ -720,6 +882,34 @@ def _translate_declarative(
             elif ".scaledToFit()" in expression:
                 _set(node, "style.objectFit", "contain", context, line, ".scaledToFit()", adapter)
         if platform == "flutter":
+            for group in ("padding", "margin"):
+                inset = named_argument(args, group, ":") or ""
+                match = re.fullmatch(r"(?:const\s+)?EdgeInsets\.(fromLTRB|only|symmetric|all)\s*\(([\s\S]*)\)", inset)
+                if match:
+                    kind, values = match.groups()
+                    edges = {}
+                    if kind == "fromLTRB" and len(arguments(values)) == 4:
+                        edges = dict(zip(("Left", "Top", "Right", "Bottom"), arguments(values)))
+                    elif kind == "only":
+                        edges = {side.title(): named_argument(values, side, ":") for side in ("left", "top", "right", "bottom")}
+                    elif kind == "symmetric":
+                        edges = {"Horizontal": named_argument(values, "horizontal", ":"), "Vertical": named_argument(values, "vertical", ":")}
+                    elif kind == "all":
+                        edges = {"": values.strip()}
+                    for side, value in edges.items():
+                        if value is not None:
+                            _set(node, f"layout.{group}{side}", _normalize_ref(value), context, line, inset, adapter)
+            if widget == "SafeArea":
+                _set(node, "layout.safeArea", "systemBars", context, line, widget, adapter, "high")
+            if widget in {"Align", "Center"}:
+                alignment_value = named_argument(args, "alignment", ":") or "Alignment.center"
+                pairs = {"topLeft": ("start", "start"), "topCenter": ("start", "center"), "topRight": ("start", "end"),
+                         "centerLeft": ("center", "start"), "center": ("center", "center"), "centerRight": ("center", "end"),
+                         "bottomLeft": ("end", "start"), "bottomCenter": ("end", "center"), "bottomRight": ("end", "end")}
+                if alignment_value.removeprefix("Alignment.") in pairs:
+                    vertical, horizontal = pairs[alignment_value.removeprefix("Alignment.")]
+                    for key, value in (("justify", vertical), ("align", horizontal), ("width", "fill"), ("height", "fill")):
+                        _set(node, f"layout.{key}", value, context, line, alignment_value, adapter, "high")
             main_axis = re.search(r"\bmainAxisAlignment\s*:\s*MainAxisAlignment\.(start|end|center|spaceBetween|spaceAround|spaceEvenly)", args)
             cross_axis = re.search(r"\bcrossAxisAlignment\s*:\s*CrossAxisAlignment\.(start|end|center|stretch|baseline)", args)
             if main_axis:
@@ -742,22 +932,32 @@ def _translate_declarative(
             if radius: _set(node, "style.radius", _normalize_ref(radius.group(1)), context, line, radius.group(0), adapter)
             font_size = re.search(r"fontSize\s*:\s*([\d.]+)", expression)
             if font_size: _set(node, "style.fontSize", _normalize_ref(font_size.group(1)), context, line, font_size.group(0), adapter)
+            text_style = named_argument(args, "style", ":") or ""
+            if widget in {"Text", "RichText"} and text_style:
+                family = re.search(r"fontFamily\s*:\s*['\"]([^'\"]+)['\"]", text_style)
+                if family: _set(node, "style.fontFamily", family.group(1), context, line, family.group(0), adapter)
+                height_factor = re.search(r"\bheight\s*:\s*([\d.]+)", text_style)
+                if height_factor and font_size:
+                    _set(node, "style.lineHeight", float(height_factor.group(1)) * float(font_size.group(1)), context, line, text_style, adapter, "high")
+                letter_spacing = re.search(r"letterSpacing\s*:\s*(-?[\d.]+)", text_style)
+                if letter_spacing: _set(node, "style.letterSpacing", float(letter_spacing.group(1)), context, line, letter_spacing.group(0), adapter)
             font_weight = re.search(r"fontWeight\s*:\s*FontWeight\.w(\d+)", expression)
             if font_weight: _set(node, "style.fontWeight", int(font_weight.group(1)), context, line, font_weight.group(0), adapter)
             opacity = re.search(r"\bopacity\s*:\s*([\d.]+)", args)
             if opacity: _set(node, "style.opacity", float(opacity.group(1)), context, line, opacity.group(0), adapter)
             for edge in ("top", "right", "bottom", "left"):
-                positioned = re.search(rf"\b{edge}\s*:\s*(-?[\d.]+)", args)
+                positioned = re.search(rf"\b{edge}\s*:\s*(-?[\d.]+)", args) if widget == "Positioned" else None
                 if positioned: _set(node, f"layout.{edge}", _normalize_ref(positioned.group(1)), context, line, positioned.group(0), adapter)
             if widget == "Expanded":
                 grow = re.search(r"\bflex\s*:\s*(\d+)", args)
                 _set(node, "layout.grow", int(grow.group(1)) if grow else 1, context, line, grow.group(0) if grow else widget, adapter)
-            navigation = re.search(r"\b(?:go|push|pushReplacement|replace)\s*\(\s*['\"]([^'\"]+)", args)
-            callback = re.search(r"\b(?:onTap|onPressed)\s*:\s*(?!null)", args)
+            handlers = ", ".join(filter(None, (named_argument(raw_args, key, ":") for key in ("onTap", "onPressed"))))
+            navigation = re.search(r"\b(?:go|push|pushReplacement|replace)\s*\(\s*['\"]([^'\"]+)", handlers)
+            callback = bool(handlers and handlers.strip() != "null")
             if navigation and callback:
                 node["action"] = {"type": "navigate", "target": navigation.group(1), "route": navigation.group(1)}
                 node["semantics"] = {"role": "link", "label": node.get("text") or widget}
-            asset = re.search(r"Image\.asset\s*\(\s*['\"]([^'\"]+)", expression)
+            asset = re.match(r"\s*['\"]([^'\"]+)", args) if call.get("constructor") == "asset" else None
             if widget == "Image" and asset:
                 node["asset"] = asset.group(1)
                 node["provenance"]["asset"] = property_evidence(context.source, line, asset.group(0), adapter, "exact")
@@ -765,17 +965,28 @@ def _translate_declarative(
             if widget == "Icon" and icon:
                 node["iconName"] = icon.group(1)
         result.nodes[node_id] = node
+        if platform in {"ios", "macos"}:
+            render_roots[node_id] = _swift_wrappers(result, node_id, node, modifiers, context, line, apple_catalog)
         records.append((call, node_id))
     for call, node_id in records:
         parents = [(candidate, candidate_id) for candidate, candidate_id in records if candidate["start"] < call["start"] < candidate["containEnd"]]
         parent_id = max(parents, key=lambda item: item[0]["start"])[1] if parents else root_id
-        result.nodes[parent_id]["children"].append(node_id)
+        child_id = render_roots.get(node_id, node_id)
+        result.nodes[parent_id]["children"].append(child_id)
+        if platform == "flutter" and result.nodes[parent_id].get("component") == "SizedBox":
+            for axis in ("width", "height"):
+                if axis in result.nodes[parent_id]["layout"]:
+                    result.nodes[child_id]["layout"][axis] = "fill"
+                    result.nodes[child_id]["provenance"]["layout." + axis] = result.nodes[parent_id]["provenance"]["layout." + axis]
+        if result.nodes[parent_id].get("layout", {}).get("direction") == "overlay":
+            result.nodes[child_id]["layout"]["gridArea"] = "1 / 1"
+            result.nodes[child_id]["provenance"]["layout.gridArea"] = result.nodes[parent_id]["provenance"]["layout.direction"]
     known = set(types) | {
         "Color", "Font", "String", "EdgeInsets", "RoundedRectangle", "MaterialApp", "ThemeData",
         "BoxDecoration", "BoxShadow", "Shadow", "Offset", "LinearGradient", "RadialGradient", "SweepGradient",
         "TextStyle", "TextSpan", "ColorScheme", "BoxConstraints", "Duration", "ValueKey", "InputDecoration",
     }
-    for unknown in re.finditer(r"\b([A-Z]\w*)\s*(?:\(|\{)", body):
+    for unknown in re.finditer(r"\b([A-Z]\w*)\s*(?:\(|\{)", mask_literals(body)):
         unknown_name = unknown.group(1)
         flutter_visual_gap = bool(re.search(r"(?:Widget|View|Card|Tile|Button|Screen|Panel|Header|Footer|Container)$", unknown_name))
         if unknown_name not in known and (platform != "flutter" or flutter_visual_gap):
@@ -789,7 +1000,7 @@ def _flutter_color(expression: str) -> str | None:
     raw = re.search(r"0x([0-9a-fA-F]{6,8})", expression)
     if raw:
         value = raw.group(1)
-        return f"#{value[-6:]}".lower()
+        return (f"#{value[2:]}{value[:2]}" if len(value) == 8 and value[:2].lower() != "ff" else f"#{value[-6:]}").lower()
     named = re.search(r"Colors\.(\w+)", expression)
     return {
         "black": "#000000", "white": "#ffffff", "red": "#f44336", "green": "#4caf50",
@@ -813,10 +1024,62 @@ class SwiftUIAdapter:
 
     def __init__(self) -> None:
         self._catalogs: dict[str, AppleResourceCatalog] = {}
+        self._views = {}
 
     def prepare(self, contexts: list[SourceContext]) -> None:
         roots = {str(context.root.resolve()): context.root for context in contexts if self.supports(context)}
         self._catalogs = {key: AppleResourceCatalog.discover(root) for key, root in roots.items()}
+        self._views = {}
+        for context in contexts:
+            if self.supports(context):
+                for entry in self._view_entries(context):
+                    self._views.setdefault(str(context.root.resolve()), {}).setdefault(entry["name"], []).append(entry)
+
+    @staticmethod
+    def _view_entries(context):
+        for struct in re.finditer(r"\bstruct\s+([A-Z]\w*)\s*:\s*View\s*\{", mask_literals(context.text)):
+            end = syntax_close(context.text, context.text.find("{", struct.start()))
+            if end is None:
+                continue
+            segment = context.text[struct.end():end]
+            body_match = re.search(r"\bvar\s+body\s*:\s*some\s+View\s*\{", mask_literals(segment))
+            if not body_match:
+                continue
+            start = struct.end() + body_match.end()
+            body_end = syntax_close(context.text, start-1)
+            if body_end is not None:
+                fields = list(re.finditer(r"\blet\s+(\w+)\s*:\s*[\w<>.?]+(?:\s*=\s*([^\n;]+))?", segment[:body_match.start()]))
+                yield {"name": struct.group(1), "context": context, "body": context.text[start:body_end], "start": start,
+                       "fields": [match.group(1) for match in fields], "defaults": {match.group(1): match.group(2).strip() for match in fields if match.group(2)}}
+
+    def _translate_view(self, entry, namespace, platform, tokens, bindings=None, stack=(), budget=None):
+        context = entry["context"]
+        available = self._views.get(str(context.root.resolve()), {})
+        unique = {name: values[0] for name, values in available.items() if len(values) == 1}
+        body = substitute_identifiers(entry["body"], {**entry["defaults"], **(bindings or {})})
+        budget = budget if budget is not None else [2000]
+        result = _translate_declarative(context, self.id, namespace, body, entry["start"], platform, "swiftui", tokens,
+                                        self._catalog(context), extra_types={name: "container" for name in unique}, node_budget=budget)
+        for node in result.nodes.values():
+            node["source"]["symbol"] = entry["name"]
+        for node_id, node in list(result.nodes.items()):
+            raw_args = node.pop("_adapterArgs", "")
+            name = node.get("component")
+            if name not in unique:
+                continue
+            if name in (*stack, entry["name"]) or len(stack) >= 6 or len(result.nodes) >= 2000:
+                result.unsupported.append({"adapter": self.id, "file": context.source, "expression": name, "reason": "recursive-or-deep-swiftui-component"})
+                continue
+            child_bindings = {key: value for key in unique[name]["fields"] if (value := named_argument(raw_args, key, ":")) is not None}
+            child = self._translate_view(unique[name], node_id + "-content", platform, tokens, child_bindings, (*stack, entry["name"]), budget)
+            child_root = child.screens[0]["root"]
+            node["children"].extend(child.nodes[child_root]["children"])
+            if not node["layout"] and not node["style"]:
+                _set(node, "layout.display", "contents", context, node["source"]["line"], name, self.id, "high")
+            node["standardRef"] = "project.swiftui.local"
+            result.nodes.update({key: value for key, value in child.nodes.items() if key != child_root})
+            result.unsupported.extend(child.unsupported)
+        return result
 
     def _catalog(self, context: SourceContext) -> AppleResourceCatalog:
         key = str(context.root.resolve())
@@ -835,16 +1098,10 @@ class SwiftUIAdapter:
             group = "colors" if match.group(2).startswith("Color") else "spacing"
             tokens[group][_slug(match.group(1)).replace("-", "_")] = {"value": match.group(2), "source": {"file": context.source, "line": _line(context.text, match.group(0))}, "adapter": self.id}
         platform = "macos" if any(value in {"swiftui-macos", "appkit"} for value in context.platforms) else "ios"
-        for struct in re.finditer(r"\bstruct\s+([A-Z]\w*)\s*:\s*View\s*\{", context.text):
-            end = _balanced_close(context.text, context.text.find("{", struct.start()), "{", "}")
-            if end is None: continue
-            segment = context.text[struct.end():end]
-            body_match = re.search(r"\bvar\s+body\s*:\s*some\s+View\s*\{", segment)
-            if not body_match: continue
-            body_start = struct.end() + body_match.end()
-            body_end = _balanced_close(context.text, body_start - 1, "{", "}")
-            if body_end is None: continue
-            current = _translate_declarative(context, self.id, struct.group(1), context.text[body_start:body_end], body_start, platform, "swiftui", tokens, catalog)
+        if str(context.root.resolve()) not in self._views:
+            self.prepare([context])
+        for entry in self._view_entries(context):
+            current = self._translate_view(entry, entry["name"], platform, tokens)
             combined.screens.extend(current.screens); combined.nodes.update(current.nodes); combined.unsupported.extend(current.unsupported)
         combined.tokens = tokens
         return combined
@@ -910,7 +1167,7 @@ class FlutterAdapter:
             if closing is not None:
                 body = text[opening + 1:closing]
                 returned = re.search(r"\breturn\s+(.+)", body, re.S)
-                return ((returned.group(1) if returned else body), opening + 1)
+                return ((returned.group(1) if returned else body), opening + 1 + (returned.start(1) if returned else 0))
         arrow = re.search(r"\bWidget\s+build\s*\([^)]*\)\s*=>", segment)
         if arrow:
             body_start = start + arrow.end()
@@ -963,6 +1220,7 @@ class FlutterAdapter:
                 entry = {
                     "name": name, "base": base, "context": context, "body": build[0] if build else "",
                     "bodyOffset": build[1] if build else opening + 1, "fields": self._fields(class_body),
+                    "defaults": {match.group(1): match.group(2).strip() for match in re.finditer(r"\bthis\.(\w+)\s*=\s*([^,}\n]+)", class_body)},
                 }
                 if base in self.WIDGET_BASES:
                     self._classes[name] = entry
@@ -1012,7 +1270,7 @@ class FlutterAdapter:
         return result
 
     def _bindings(self, entry: dict[str, Any], args: str) -> dict[str, str]:
-        named: dict[str, str] = {}
+        named: dict[str, str] = dict(entry.get("defaults", {}))
         positional: list[str] = []
         for item in self._split_args(args):
             match = re.match(r"([A-Za-z_]\w*)\s*:\s*(.+)", item, re.S)
@@ -1041,10 +1299,8 @@ class FlutterAdapter:
 
     def _resolved_body(self, entry: dict[str, Any], bindings: dict[str, str]) -> str:
         body = str(entry.get("body") or "")
-        for name, value in sorted(bindings.items(), key=lambda item: len(item[0]), reverse=True):
-            body = re.sub(rf"\b{re.escape(name)}\b", value, body)
-        for name, value in sorted(self._constants.items(), key=lambda item: len(item[0]), reverse=True):
-            body = re.sub(rf"\b{re.escape(name)}\b", value, body)
+        body = substitute_identifiers(body, bindings)
+        body = substitute_identifiers(body, self._constants)
         return self._resolve_localizations(body)
 
     def _translate_class(
@@ -1054,19 +1310,24 @@ class FlutterAdapter:
         tokens: dict[str, Any],
         bindings: dict[str, str] | None = None,
         stack: tuple[str, ...] = (),
+        budget: list[int] | None = None,
     ) -> AdapterResult:
         entry = self._classes[class_name]
         body = self._resolved_body(entry, bindings or {})
         context = entry["context"]
         custom_types = {name: "container" for name in self._classes}
+        budget = budget if budget is not None else [2000]
         current = _translate_declarative(
             context, self.id, namespace, body, int(entry["bodyOffset"]), "flutter", "flutter", tokens,
-            extra_types=custom_types,
+            extra_types=custom_types, node_budget=budget,
         )
         for node_id, node in list(current.nodes.items()):
             component = str(node.get("component") or "")
             raw_args = str(node.pop("_adapterArgs", ""))
-            if component not in self._classes or component in stack or component == class_name:
+            if component not in self._classes:
+                continue
+            if component in stack or component == class_name or len(stack) >= 6:
+                current.unsupported.append({"adapter": self.id, "file": context.source, "expression": component, "reason": "recursive-or-deep-flutter-component"})
                 continue
             child_entry = self._classes[component]
             child = self._translate_class(
@@ -1075,8 +1336,10 @@ class FlutterAdapter:
                 tokens,
                 self._bindings(child_entry, raw_args),
                 (*stack, class_name),
+                budget,
             )
             child_root = str(child.screens[0]["root"])
+            _set(node, "layout.display", "contents", context, node["source"]["line"], component, self.id, "high")
             node["children"] = [*node.get("children", []), *child.nodes[child_root].get("children", [])]
             for child_id, child_node in child.nodes.items():
                 if child_id != child_root:
@@ -1283,7 +1546,8 @@ class ProjectedMarkupAdapter:
         projected = re.sub(r"\{[^{}]*\}", "", markup)
         projected = projected.replace("className=", "class=").replace("htmlFor=", "for=")
         embedded_css = "\n".join(re.findall(r"<style\b[^>]*>([\s\S]*?)</style>", text, re.I)) if self.id in {"vue", "svelte"} else ""
-        padded = "\n" * text.count("\n", 0, start) + projected + ("\n" + embedded_css if embedded_css else "")
+        imports = "".join(f'<link rel="stylesheet" href="{match.group(1)}">' for match in re.finditer(r'import\s*[\"\']([^\"\']+\.css)[\"\']', text))
+        padded = "\n" * text.count("\n", 0, start) + imports + projected + ("\n<style>" + embedded_css + "</style>" if embedded_css else "")
         projected_context = SourceContext(context.root, context.path, context.source, padded, context.platforms, context.role)
         result = self.web_adapter.translate(projected_context)
         result.adapter = self.id; result.unsupported.extend(unsupported)

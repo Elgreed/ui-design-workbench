@@ -16,6 +16,8 @@ function parseArgs(argv) {
     else if (value === '--geometry-output') result.geometryOutput = argv[++index];
     else if (value === '--capture-view') result.captureView = argv[++index];
     else if (value === '--capture-screen') result.captureScreen = argv[++index];
+    else if (value === '--capture-theme') result.captureTheme = argv[++index];
+    else if (value === '--capture-device') result.captureDevice = true;
     else if (value === '--capture-left-panel') result.captureLeftPanel = argv[++index];
     else if (value === '--capture-right-panel') result.captureRightPanel = argv[++index];
     else if (value === '--capture-inspector-tab') result.captureInspectorTab = argv[++index];
@@ -29,7 +31,7 @@ function parseArgs(argv) {
     else if (!result.input) result.input = value;
     else throw new Error(`Unexpected argument: ${value}`);
   }
-  if (!result.input) throw new Error('Usage: smoke_preview.js <ui-preview.html> [--mode projection|review] [--output diagnostics.json] [--screenshot preview.png] [--geometry-output geometry.json] [--capture-only] [--capture-view overview|prototype|single|states|compare] [--capture-screen ID] [--capture-left-panel open|closed] [--capture-right-panel open|closed] [--capture-inspector-tab inspect|review|comments] [--capture-review-section summary|problems|changes] [--viewport-width 1440] [--viewport-height 960] [--fail-on-findings]');
+  if (!result.input) throw new Error('Usage: smoke_preview.js <ui-preview.html> [--mode projection|review] [--output diagnostics.json] [--screenshot preview.png] [--geometry-output geometry.json] [--capture-only] [--capture-device] [--capture-theme ID] [--capture-view overview|prototype|single|states|compare] [--capture-screen ID] [--capture-left-panel open|closed] [--capture-right-panel open|closed] [--capture-inspector-tab inspect|review|comments] [--capture-review-section summary|problems|changes] [--viewport-width 1440] [--viewport-height 960] [--fail-on-findings]');
   if (!['projection', 'review'].includes(result.mode)) throw new Error('--mode must be projection or review');
   if (result.captureView && !['overview', 'prototype', 'single', 'states', 'compare'].includes(result.captureView)) throw new Error('--capture-view must be overview, prototype, single, states, or compare');
   if (result.captureLeftPanel && !['open', 'closed'].includes(result.captureLeftPanel)) throw new Error('--capture-left-panel must be open or closed');
@@ -154,6 +156,7 @@ async function main() {
       expression: `({
         view: state.view,
         screen: state.screen,
+        activeThemeId: state.activeThemeId,
         activeVersion: state.activeVersion,
         compareBaseVersion: state.compareBaseVersion,
         compareTargetVersion: state.compareTargetVersion,
@@ -791,6 +794,8 @@ async function main() {
     captureState.findingScreen = 'all';
     if (args.captureView) captureState.view = args.captureView;
     if (args.captureScreen) captureState.screen = args.captureScreen;
+    if (args.captureTheme) captureState.activeThemeId = args.captureTheme;
+    if (args.captureDevice) { captureState.zoomMode = 'manual'; captureState.zoom = 1; captureState.view = 'single'; }
     if (args.captureLeftPanel) captureState.sidebarOpen = args.captureLeftPanel === 'open';
     if (args.captureRightPanel) captureState.inspectorOpen = args.captureRightPanel === 'open';
     if (args.captureInspectorTab) captureState.inspectorTab = args.captureInspectorTab;
@@ -830,10 +835,18 @@ async function main() {
       })()`,
       returnByValue: true,
     });
-    await delay(100);
+    await cdp.call('Runtime.evaluate', { expression: 'document.fonts.ready.then(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))', awaitPromise: true });
+    let deviceClip;
+    if (args.captureDevice) {
+      const response = await cdp.call('Runtime.evaluate', {
+        expression: `(() => { const original=document.querySelector('.stage>.device'); if(!original)throw new Error('Single-screen device is missing'); const clone=original.cloneNode(true); clone.dataset.captureDevice='true'; Object.assign(clone.style,{position:'absolute',left:'0',top:'0',transform:'none',margin:'0',border:'0',borderRadius:'0',width:original.dataset.width+'px',height:original.dataset.height+'px',zIndex:'2147483647'}); for(const child of document.body.children)child.style.visibility='hidden';clone.style.visibility='visible';document.body.append(clone); const r=clone.querySelector('.device-content').getBoundingClientRect(); return {x:r.x+scrollX,y:r.y+scrollY,width:r.width,height:r.height,scale:1}; })()`, returnByValue: true,
+      });
+      if (response.exceptionDetails || !response.result?.value?.width) throw new Error('Cannot capture device bounds');
+      deviceClip = response.result.value;
+    }
     if (args.screenshot) {
       await cdp.call('Page.enable');
-      const shot = await cdp.call('Page.captureScreenshot', { format: 'png', fromSurface: true, captureBeyondViewport: false });
+      const shot = await cdp.call('Page.captureScreenshot', { format: 'png', fromSurface: true, captureBeyondViewport: Boolean(deviceClip), ...(deviceClip ? {clip: deviceClip} : {}) });
       fs.writeFileSync(path.resolve(args.screenshot), Buffer.from(shot.data, 'base64'));
     }
     if (args.geometryOutput) {
@@ -865,6 +878,15 @@ async function main() {
             reviewFooter: '.review-context-footer',
           };
           const elements = Object.fromEntries(Object.entries(selectors).map(([key, selector]) => [key, rect(document.querySelector(selector))]));
+          const device = document.querySelector('[data-capture-device] .device-content') || document.querySelector('.stage>.device .device-content');
+          const deviceRect = device?.getBoundingClientRect();
+          const nodes = {};
+          if (deviceRect) for (const element of device.querySelectorAll('[data-node-id]')) {
+            const box = rect(element), style = getComputedStyle(element);
+            nodes[element.dataset.nodeId] = {...box, x: box.x-deviceRect.x, y: box.y-deviceRect.y,
+              text: element.classList.contains('ui-text') ? element.textContent : null,
+              fontFamily: style.fontFamily, fontSize: style.fontSize, lineHeight: style.lineHeight};
+          }
           document.querySelectorAll('[data-screen-card]').forEach((element, index) => { elements['screenCard:' + (element.dataset.screenCard || index)] = rect(element); });
           const cards = Object.entries(elements).filter(([key, value]) => key.startsWith('screenCard:') && value?.visible);
           const cardOverlaps = [];
@@ -877,7 +899,7 @@ async function main() {
             const a = elements[aKey], b = elements[bKey];
             return a?.visible && b?.visible && a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
           });
-          return { version: 2, viewport: { width: innerWidth, height: innerHeight }, view: state.view, screen: state.screen, zoom: state.computedZoom, sidebarOpen: state.sidebarOpen, inspectorOpen: state.inspectorOpen, inspectorTab: state.inspectorTab, elements, overlaps: [...cardOverlaps, ...controlOverlaps], cardOverlaps, controlOverlaps };
+          return { version: 2, viewport: { width: innerWidth, height: innerHeight }, view: state.view, screen: state.screen, theme: state.activeThemeId, zoom: state.computedZoom, sidebarOpen: state.sidebarOpen, inspectorOpen: state.inspectorOpen, inspectorTab: state.inspectorTab, nodes, elements, overlaps: [...cardOverlaps, ...controlOverlaps], cardOverlaps, controlOverlaps };
         })()`,
         returnByValue: true,
       });

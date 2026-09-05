@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 
-MODEL_VERSION = "deterministic-box-v1"
+MODEL_VERSION = "deterministic-box-v2"
 _LENGTH = re.compile(r"^(-?\d+(?:\.\d+)?)\s*(?:px|dp|sp|pt)?$", re.IGNORECASE)
 
 
@@ -100,11 +100,14 @@ class LayoutSolver:
         missing = sorted(reachable - self.rects.keys())
         if missing:
             self.diagnostics.append(f"unsolved-nodes:{','.join(missing)}")
-        status = "solved" if measured.complete and not missing else "partial"
+        needs_text_measurement = any(item.startswith("browser-text-metrics:") for item in self.diagnostics)
+        needs_insets = any(item.startswith("browser-system-insets:") for item in self.diagnostics)
+        status = "solved" if measured.complete and not missing and not needs_text_measurement and not needs_insets else "partial"
         return {
             "status": status,
             "nodes": self.rects,
             "diagnostics": list(dict.fromkeys(self.diagnostics)),
+            "textMeasurement": "browser" if needs_text_measurement else "fixed",
         }
 
     def _reachable(self, root_id: str) -> set[str]:
@@ -192,9 +195,15 @@ class LayoutSolver:
         stack.add(node_id)
         node = self.nodes[node_id]
         layout = node.get("layout", {}) if isinstance(node.get("layout"), dict) else {}
+        if layout.get("safeArea") == "systemBars":
+            self.diagnostics.append(f"browser-system-insets:{node_id}")
         padding_top, padding_right, padding_bottom, padding_left = _edge_values(layout, self.values, "padding")
         width = self._dimension(layout, "width", available_width, forced_width)
         height = self._dimension(layout, "height", available_height, forced_height)
+        if node.get("type") in {"text", "button", "input"} and (width is None or height is None):
+            # Estimates are useful for diagnostics, but may not fix DOM boxes before
+            # the browser has shaped the actual font and performed word wrapping.
+            self.diagnostics.append(f"browser-text-metrics:{node_id}")
         inner_width = max(0.0, width - padding_left - padding_right) if width is not None else (
             max(0.0, available_width - padding_left - padding_right) if available_width is not None else None
         )

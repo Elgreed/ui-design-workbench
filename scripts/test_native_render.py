@@ -152,7 +152,7 @@ class NativeRenderTests(unittest.TestCase):
         self.assertFalse(audit["nativeExecutionStarted"])
         self.assertIn("Нативный снимок:</span>", preview)
         self.assertIn("визуальная точность не подтверждена", preview)
-        self.assertIn("deterministic-box-v1", preview)
+        self.assertIn("deterministic-box-v2", preview)
 
     def test_partial_projection_remains_explicit_fidelity_gap(self) -> None:
         ir = {

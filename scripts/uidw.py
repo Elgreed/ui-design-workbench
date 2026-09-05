@@ -52,8 +52,8 @@ from scan_ui import (
 )
 
 
-CACHE_VERSION = 8
-CLI_VERSION = "0.6.7"
+CACHE_VERSION = 10
+CLI_VERSION = "0.6.8"
 CONFIG_VERSION = 5
 STATE_DIR_NAME = ".ui-design-workbench"
 CONFIG_NAME = "config.json"
@@ -89,6 +89,10 @@ SKILL_SCRIPT_FILES = (
     "coverage_report.py",
     "fidelity_adapter_api.py",
     "fidelity_adapters.py",
+    "source_syntax.py",
+    "compose_syntax.py",
+    "compose_resources.py",
+    "compose_instances.py",
     "fidelity_core.py",
     "fidelity_platform_adapters.py",
     "generate_interaction_matrix.py",

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ui-design-workbench-cli"
-version = "0.6.7"
+version = "0.6.8"
 description = "Repository UI indexing, graph, preview, and deterministic review CLI"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -43,6 +43,10 @@ py-modules = [
   "fidelity_core",
   "fidelity_adapter_api",
   "fidelity_adapters",
+  "source_syntax",
+  "compose_syntax",
+  "compose_resources",
+  "compose_instances",
   "fidelity_platform_adapters",
   "android_resource_resolver",
   "apple_resource_resolver",
@@ -68,6 +72,10 @@ py-modules = [
   "scripts/coverage_report.py",
   "scripts/fidelity_adapter_api.py",
   "scripts/fidelity_adapters.py",
+  "scripts/source_syntax.py",
+  "scripts/compose_syntax.py",
+  "scripts/compose_resources.py",
+  "scripts/compose_instances.py",
   "scripts/fidelity_core.py",
   "scripts/fidelity_platform_adapters.py",
   "scripts/generate_interaction_matrix.py",

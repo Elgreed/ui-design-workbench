@@ -6,6 +6,22 @@ Not every historical version was published as a GitHub Release or package artifa
 
 ## [Unreleased]
 
+## [0.6.8] - 2026-09-05
+
+### Fixed
+
+- Flutter and SwiftUI isolate each widget's arguments from nested children, ignore quoted/commented calls, preserve alpha colors and report bounded expansion or runtime-control-flow gaps. Local SwiftUI views expand with literal arguments; Flutter constructor defaults no longer rewrite string literals.
+- Flutter preserves directional insets, text height factors, named image constructors and children constrained by SizedBox. SwiftUI preserves repeated padding and the order of frame, padding and background modifiers on both Apple targets.
+- XAML projections preserve LTRB thickness, ARGB colors, grid tracks and cell spans, child stretching, visibility and checked/disabled states without adding generic card padding to Border.
+- Web CSS respects selector specificity, declaration order, important declarations and linked stylesheet order. Unlinked stylesheets and unresolved media rules no longer silently change the projection; Vue/Svelte styles and React CSS imports remain connected.
+- Added cross-platform source fixtures and regression coverage; native visual evidence remains specific to the platform, fixture and viewport compared.
+- Compose screens with callback parameters are translated without merging their declarations into later previews; nested arguments, rectangular sizes, bounded dimensions, and Box alignments retain their source semantics.
+- Compose projections resolve literal project spacing, typography, theme colors, and local font families; overlay geometry carries source provenance so diagnostic CLI previews can render.
+- Text-dependent previews use browser font measurement and wrapping instead of fixing element geometry from average character-width estimates. Workbench screenshot baselines now reflect browser-measured text layout.
+- Local Compose components expand with literal defaults and preview arguments, including bounded imported enum entries; recursive expansion reports a limit instead of running indefinitely.
+- Compose Surface padding, passive radio sizing and selection, button content colors, and captured system insets retain their platform semantics in browser projections.
+- Headless device captures preserve the requested theme, wait for embedded fonts, exclude workbench panels, and export text geometry for native screenshot comparisons.
+
 ## [0.6.7] - 2026-09-02
 
 ### Fixed

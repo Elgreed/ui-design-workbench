@@ -27,6 +27,7 @@ class AdapterResult:
     themes: list[dict[str, Any]] = field(default_factory=list)
     components: list[dict[str, Any]] = field(default_factory=list)
     unsupported: list[dict[str, Any]] = field(default_factory=list)
+    fonts: list[dict[str, Any]] = field(default_factory=list)
 
 
 class UiSourceAdapter(Protocol):
@@ -83,7 +84,16 @@ def translate_sources(contexts: list[SourceContext]) -> AdapterResult:
         combined.nodes.update(result.nodes)
         for group, values in result.tokens.items():
             combined.tokens.setdefault(group, {}).update(values if isinstance(values, dict) else {})
-        combined.themes.extend(result.themes)
+        for theme in result.themes:
+            existing = next((item for item in combined.themes if item.get("id") == theme.get("id")), None)
+            if existing is None:
+                combined.themes.append(theme)
+            else:
+                for field in ("nodeOverrides", "tokenOverrides"):
+                    existing.setdefault(field, {}).update(theme.get(field, {}))
         combined.components.extend(result.components)
         combined.unsupported.extend(result.unsupported)
+        for font in result.fonts:
+            if font not in combined.fonts:
+                combined.fonts.append(font)
     return combined

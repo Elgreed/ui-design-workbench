@@ -229,6 +229,7 @@ def apply_component_defaults(ir: dict[str, Any]) -> dict[str, Any]:
     inventory = component_inventory()
     nodes = rendered.get("nodes", {})
     node_families: dict[str, str] = {}
+    parents = {child: node_id for node_id, node in nodes.items() for child in node.get("children", [])}
 
     def visit(node_id: str, family: str, seen: set[str]) -> None:
         if not node_id or node_id in seen or node_id not in nodes:
@@ -258,6 +259,28 @@ def apply_component_defaults(ir: dict[str, Any]) -> dict[str, Any]:
         if not resolved:
             continue
         component_id, descriptor = resolved
+        descriptor = copy.deepcopy(descriptor)
+        if family == "windows" and node.get("component") == "Border" and node.get("provenance", {}).get("component", {}).get("adapter") == "xaml":
+            descriptor["layout"] = {"padding": 0}
+            descriptor["style"] = {"background": "transparent", "radius": 0}
+        if family == "windows" and node.get("component") == "TextBlock" and node.get("provenance", {}).get("component", {}).get("adapter") == "xaml":
+            descriptor.setdefault("style", {})["lineHeight"] = "normal"
+        if family == "android" and node.get("provenance", {}).get("component", {}).get("adapter") == "compose":
+            if node.get("component") == "Button":
+                descriptor.setdefault("layout", {}).update({"direction": "row", "align": "center", "justify": "center"})
+            if node.get("component") == "Text":
+                parent_id = parents.get(node_id)
+                seen = set()
+                while parent_id and parent_id not in seen:
+                    seen.add(parent_id)
+                    if nodes[parent_id].get("type") == "button":
+                        descriptor.setdefault("style", {})["color"] = "inherit"
+                        break
+                    parent_id = parents.get(parent_id)
+            if node.get("component") == "Surface":
+                descriptor["layout"] = {"padding": 0, "justify": "center"}
+            if node.get("component") == "RadioButton" and node.get("interactionMode") == "passive":
+                descriptor["layout"] = {"width": 24, "height": 24}
         node["rendererFamily"] = family
         node["rendererComponentId"] = f"{family}.{component_id}"
         node["rendererRecipeId"] = next(

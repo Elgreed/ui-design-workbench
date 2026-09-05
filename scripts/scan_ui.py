@@ -1644,6 +1644,7 @@ def starter_ir(scan_result: dict[str, Any]) -> dict[str, Any]:
             "unsupported": translated.unsupported,
         },
         "tokens": translated.tokens,
+        "fonts": translated.fonts,
         "themes": {
             "defaultThemeId": "light",
             "items": theme_items,

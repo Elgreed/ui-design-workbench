@@ -1,0 +1,14 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+/* Deliberately conflicting rules exercise specificity and source order. */
+.title { color: red; }
+#title { color: #123456; }
+.title { color: green; }
+.second { background: #803366; }
+.first { background: #224466; }
+body { margin: 0; }
+.screen { box-sizing: border-box; width: 400px; height: 360px; padding: 16px 40px 32px 24px; background: #f5f5f5; font-family: Arial; }
+.title { font-size: 20px; line-height: 28px; margin: 0 0 12px; }
+.card { box-sizing: border-box; width: 240px; height: 100px; padding: 8px 20px 12px 10px; background: #33669980; margin-bottom: 12px; }
+.nested { font-size: 14px; line-height: 21px; margin: 0; color: black; }
+.footer { width: 240px; height: 40px; }
+</style></head><body><main class="screen"><p id="title" class="title">Platform sample</p><section class="card"><p class="nested">Nested text</p></section><div class="footer first second"></div></main></body></html>
